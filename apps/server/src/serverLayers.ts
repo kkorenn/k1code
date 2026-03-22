@@ -31,8 +31,8 @@ import { KeybindingsLive } from "./keybindings";
 import { GitManagerLive } from "./git/Layers/GitManager";
 import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitHubCliLive } from "./git/Layers/GitHubCli";
-import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
 import { PtyAdapter } from "./terminal/Services/PTY";
+import { RoutingTextGenerationLive } from "./git/Layers/RoutingTextGeneration";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 
 type RuntimePtyAdapterLoader = {
@@ -90,7 +90,7 @@ export function makeServerProviderLayer(): Layer.Layer<
 }
 
 export function makeServerRuntimeServicesLayer() {
-  const textGenerationLayer = CodexTextGenerationLive;
+  const textGenerationLayer = RoutingTextGenerationLive;
   const checkpointStoreLayer = CheckpointStoreLive.pipe(Layer.provide(GitCoreLive));
 
   const orchestrationLayer = OrchestrationEngineLive.pipe(
