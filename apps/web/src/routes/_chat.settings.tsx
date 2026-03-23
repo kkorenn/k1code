@@ -12,10 +12,16 @@ import {
   getCustomModelsForProvider,
   getDefaultCustomModelsForProvider,
   MAX_CUSTOM_MODEL_LENGTH,
+  MAX_FONT_FAMILY_LENGTH,
   MODEL_PROVIDER_SETTINGS,
   patchCustomModels,
   useAppSettings,
 } from "../appSettings";
+import {
+  normalizeFontFamilyOverride,
+  TERMINAL_FONT_SIZE_OPTIONS,
+  UI_FONT_SIZE_OPTIONS,
+} from "../appTypography";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
@@ -93,6 +99,19 @@ function SettingsRouteView() {
     settings,
     providerModelsQuery.data,
   );
+  const selectedUiFontSizeLabel =
+    UI_FONT_SIZE_OPTIONS.find((option) => option.value === settings.uiFontSize)?.label ??
+    settings.uiFontSize;
+  const selectedTerminalFontSizeLabel =
+    TERMINAL_FONT_SIZE_OPTIONS.find((option) => option.value === settings.terminalFontSize)
+      ?.label ?? settings.terminalFontSize;
+  const hasTypographyOverrides =
+    settings.uiFontSize !== defaults.uiFontSize ||
+    settings.terminalFontSize !== defaults.terminalFontSize ||
+    (normalizeFontFamilyOverride(settings.uiFontFamily) ?? "") !==
+      (normalizeFontFamilyOverride(defaults.uiFontFamily) ?? "") ||
+    (normalizeFontFamilyOverride(settings.monoFontFamily) ?? "") !==
+      (normalizeFontFamilyOverride(defaults.monoFontFamily) ?? "");
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -253,8 +272,8 @@ function SettingsRouteView() {
                   <div>
                     <p className="text-sm font-medium text-foreground">Timestamp format</p>
                     <p className="text-xs text-muted-foreground">
-                      System default follows your browser or OS time format. <code>12-hour</code>{" "}
-                      and <code>24-hour</code> force the hour cycle.
+                      System default follows your browser or OS time format. "12-hour" and "24-hour"
+                      force the hour cycle.
                     </p>
                   </div>
                   <Select
@@ -352,7 +371,7 @@ function SettingsRouteView() {
                     spellCheck={false}
                   />
                   <span className="text-xs text-muted-foreground">
-                    Leave blank to use <code>codex</code> from your PATH.
+                    Leave blank to use codex from your PATH.
                   </span>
                 </label>
 
@@ -386,8 +405,8 @@ function SettingsRouteView() {
 
                 <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
-                    <p>Codex binary source</p>
-                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                    <p>Binary source</p>
+                    <p className="mt-1 break-all text-[11px] text-foreground">
                       {codexBinaryPath || "PATH"}
                     </p>
                     <p className="mt-3">Gemini binary source</p>
@@ -410,6 +429,146 @@ function SettingsRouteView() {
                     Reset provider overrides
                   </Button>
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Typography</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Adjust local interface scale and font stacks for this device. Uses installed fonts
+                  only.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Interface font size</p>
+                    <p className="text-xs text-muted-foreground">
+                      Changes the app's text size and spacing.
+                    </p>
+                  </div>
+                  <Select
+                    value={settings.uiFontSize}
+                    onValueChange={(value) => {
+                      if (value !== "sm" && value !== "md" && value !== "lg") return;
+                      updateSettings({
+                        uiFontSize: value,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="w-44" aria-label="Interface font size">
+                      <SelectValue>{selectedUiFontSizeLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end">
+                      {UI_FONT_SIZE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Terminal font size</p>
+                    <p className="text-xs text-muted-foreground">
+                      Changes text size only in the built-in terminal drawer.
+                    </p>
+                  </div>
+                  <Select
+                    value={settings.terminalFontSize}
+                    onValueChange={(value) => {
+                      if (value !== "sm" && value !== "md" && value !== "lg" && value !== "xl")
+                        return;
+                      updateSettings({
+                        terminalFontSize: value,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="w-44" aria-label="Terminal font size">
+                      <SelectValue>{selectedTerminalFontSizeLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end">
+                      {TERMINAL_FONT_SIZE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+
+                <label htmlFor="ui-font-family" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Interface font family</span>
+                  <Input
+                    id="ui-font-family"
+                    value={settings.uiFontFamily}
+                    onChange={(event) =>
+                      updateSettings({
+                        uiFontFamily: event.target.value,
+                      })
+                    }
+                    onBlur={(event) =>
+                      updateSettings({
+                        uiFontFamily: normalizeFontFamilyOverride(event.target.value) ?? "",
+                      })
+                    }
+                    placeholder="Inter, system-ui, sans-serif"
+                    spellCheck={false}
+                    maxLength={MAX_FONT_FAMILY_LENGTH}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Applies to the app interface. Leave blank to use defaults.
+                  </span>
+                </label>
+
+                <label htmlFor="mono-font-family" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">
+                    Code and terminal font family
+                  </span>
+                  <Input
+                    id="mono-font-family"
+                    value={settings.monoFontFamily}
+                    onChange={(event) =>
+                      updateSettings({
+                        monoFontFamily: event.target.value,
+                      })
+                    }
+                    onBlur={(event) =>
+                      updateSettings({
+                        monoFontFamily: normalizeFontFamilyOverride(event.target.value) ?? "",
+                      })
+                    }
+                    placeholder={'"SF Mono", Menlo, monospace'}
+                    spellCheck={false}
+                    maxLength={MAX_FONT_FAMILY_LENGTH}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Applies to code blocks, inline code, and terminals. Leave blank to use defaults.
+                  </span>
+                </label>
+
+                {hasTypographyOverrides ? (
+                  <div className="flex justify-end">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        updateSettings({
+                          uiFontSize: defaults.uiFontSize,
+                          terminalFontSize: defaults.terminalFontSize,
+                          uiFontFamily: defaults.uiFontFamily,
+                          monoFontFamily: defaults.monoFontFamily,
+                        })
+                      }
+                    >
+                      Restore default
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </section>
 
