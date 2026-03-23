@@ -19,10 +19,18 @@ import { EnvMode } from "./components/BranchToolbar.logic";
 const APP_SETTINGS_STORAGE_KEY = "k1code:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
+export const MAX_FONT_FAMILY_LENGTH = 256;
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
+export const UiFontSize = Schema.Literals(["sm", "md", "lg"]);
+export type UiFontSize = typeof UiFontSize.Type;
+export const DEFAULT_UI_FONT_SIZE: UiFontSize = "md";
+
+export const TerminalFontSize = Schema.Literals(["sm", "md", "lg", "xl"]);
+export type TerminalFontSize = typeof TerminalFontSize.Type;
+export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = "md";
 type CustomModelSettingsKey = "customCodexModels" | "customClaudeModels" | "customGeminiModels";
 export type ProviderCustomModelConfig = {
   provider: ProviderKind;
@@ -62,6 +70,14 @@ export const AppSettingsSchema = Schema.Struct({
   diffWordWrap: Schema.Boolean.pipe(withDefaults(() => false)),
   enableAssistantStreaming: Schema.Boolean.pipe(withDefaults(() => false)),
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
+  uiFontSize: UiFontSize.pipe(withDefaults(() => DEFAULT_UI_FONT_SIZE)),
+  terminalFontSize: TerminalFontSize.pipe(withDefaults(() => DEFAULT_TERMINAL_FONT_SIZE)),
+  uiFontFamily: Schema.String.check(Schema.isMaxLength(MAX_FONT_FAMILY_LENGTH)).pipe(
+    withDefaults(() => ""),
+  ),
+  monoFontFamily: Schema.String.check(Schema.isMaxLength(MAX_FONT_FAMILY_LENGTH)).pipe(
+    withDefaults(() => ""),
+  ),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customGeminiModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),

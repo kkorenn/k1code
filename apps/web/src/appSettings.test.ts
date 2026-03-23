@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   AppSettingsSchema,
+  DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_TIMESTAMP_FORMAT,
+  DEFAULT_UI_FONT_SIZE,
   getAppModelOptions,
   getCustomModelOptionsByProvider,
   getCustomModelsByProvider,
@@ -262,6 +264,10 @@ describe("AppSettingsSchema", () => {
       confirmThreadDelete: false,
       enableAssistantStreaming: false,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
+      uiFontSize: DEFAULT_UI_FONT_SIZE,
+      terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+      uiFontFamily: "",
+      monoFontFamily: "",
       customCodexModels: [],
       customClaudeModels: [],
       customGeminiModels: [],
