@@ -29,6 +29,8 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --font-sans: var(--app-ui-font-family);
+  --font-mono: var(--app-mono-font-family);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -89,6 +91,12 @@
   --success-foreground: var(--color-emerald-700);
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
+  --app-ui-font-family:
+    "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --app-mono-font-family:
+    "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --app-ui-font-size: 16px;
+  --app-terminal-font-size: 12px;
 
   @variant dark {
     color-scheme: dark;
@@ -120,14 +128,12 @@
   }
 }
 
+html {
+  font-size: var(--app-ui-font-size);
+}
+
 body {
-  font-family:
-    "DM Sans",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    system-ui,
-    sans-serif;
+  font-family: var(--app-ui-font-family);
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -157,10 +163,12 @@ body::after {
 }
 
 pre,
-code,
-textarea,
-input {
-  font-family: "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+code {
+  font-family: var(--app-mono-font-family);
+}
+
+.xterm .xterm-helper-textarea {
+  font-family: var(--app-mono-font-family);
 }
 
 /* Window drag region (frameless titlebar) */
