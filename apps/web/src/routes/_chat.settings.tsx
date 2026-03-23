@@ -292,6 +292,43 @@ function SettingsRouteView() {
                     </Button>
                   </div>
                 ) : null}
+
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Wrap diff lines by default
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Sets the initial diff wrap state when the diff panel opens. The in-panel wrap
+                      button only affects the current open diff session.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.diffWordWrap}
+                    onCheckedChange={(checked) =>
+                      updateSettings({
+                        diffWordWrap: Boolean(checked),
+                      })
+                    }
+                    aria-label="Wrap diff lines by default"
+                  />
+                </div>
+
+                {settings.diffWordWrap !== defaults.diffWordWrap ? (
+                  <div className="flex justify-end">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        updateSettings({
+                          diffWordWrap: defaults.diffWordWrap,
+                        })
+                      }
+                    >
+                      Restore default
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </section>
 
