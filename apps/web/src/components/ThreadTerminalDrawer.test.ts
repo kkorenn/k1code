@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { ThreadId } from "@t3tools/contracts";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  applyTerminalAppearanceUpdate,
   resolveTerminalSelectionActionPosition,
   shouldHandleTerminalSelectionMouseUp,
+  syncTerminalGeometryWithBackend,
   terminalSelectionActionDelayForClickCount,
 } from "./ThreadTerminalDrawer";
 
@@ -71,5 +74,122 @@ describe("resolveTerminalSelectionActionPosition", () => {
     expect(shouldHandleTerminalSelectionMouseUp(true, 0)).toBe(true);
     expect(shouldHandleTerminalSelectionMouseUp(false, 0)).toBe(false);
     expect(shouldHandleTerminalSelectionMouseUp(true, 1)).toBe(false);
+  });
+});
+
+describe("applyTerminalAppearanceUpdate", () => {
+  it("refreshes in place when only the theme changes", () => {
+    const refresh = vi.fn();
+    const terminal = {
+      options: {
+        theme: { background: "#000000" },
+        fontFamily: "Menlo, monospace",
+        fontSize: 12,
+      },
+      rows: 30,
+      refresh,
+    };
+
+    const result = applyTerminalAppearanceUpdate({
+      terminal,
+      theme: { background: "#ffffff" },
+      typography: { fontFamily: "Menlo, monospace", fontSize: 12 },
+    });
+
+    expect(result).toBe("refresh");
+    expect(terminal.options.theme).toEqual({ background: "#ffffff" });
+    expect(refresh).toHaveBeenCalledWith(0, 29);
+  });
+
+  it("requests geometry sync when the terminal font changes", () => {
+    const refresh = vi.fn();
+    const terminal = {
+      options: {
+        theme: { background: "#000000" },
+        fontFamily: "Menlo, monospace",
+        fontSize: 12,
+      },
+      rows: 30,
+      refresh,
+    };
+
+    const result = applyTerminalAppearanceUpdate({
+      terminal,
+      theme: { background: "#000000" },
+      typography: { fontFamily: '"SF Mono", Menlo, monospace', fontSize: 14 },
+    });
+
+    expect(result).toBe("geometry");
+    expect(terminal.options.fontFamily).toBe('"SF Mono", Menlo, monospace');
+    expect(terminal.options.fontSize).toBe(14);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncTerminalGeometryWithBackend", () => {
+  it("uses post-fit geometry and keeps the terminal pinned to the bottom when already at the bottom", () => {
+    const threadId = ThreadId.makeUnsafe("thread-1");
+    const resize = vi.fn().mockResolvedValue(undefined);
+    const scrollToBottom = vi.fn();
+    const terminal = {
+      buffer: { active: { viewportY: 12, baseY: 12 } },
+      cols: 80,
+      rows: 24,
+      scrollToBottom,
+    };
+    const fitAddon = {
+      fit: vi.fn(() => {
+        terminal.cols = 120;
+        terminal.rows = 40;
+      }),
+    };
+
+    syncTerminalGeometryWithBackend({
+      api: { terminal: { resize } },
+      terminal,
+      fitAddon,
+      threadId,
+      terminalId: "default",
+    });
+
+    expect(fitAddon.fit).toHaveBeenCalledTimes(1);
+    expect(scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(resize).toHaveBeenCalledWith({
+      threadId,
+      terminalId: "default",
+      cols: 120,
+      rows: 40,
+    });
+  });
+
+  it("does not force-scroll when the terminal is not at the bottom", () => {
+    const threadId = ThreadId.makeUnsafe("thread-2");
+    const resize = vi.fn().mockResolvedValue(undefined);
+    const scrollToBottom = vi.fn();
+    const terminal = {
+      buffer: { active: { viewportY: 4, baseY: 12 } },
+      cols: 90,
+      rows: 30,
+      scrollToBottom,
+    };
+    const fitAddon = {
+      fit: vi.fn(),
+    };
+
+    syncTerminalGeometryWithBackend({
+      api: { terminal: { resize } },
+      terminal,
+      fitAddon,
+      threadId,
+      terminalId: "secondary",
+    });
+
+    expect(scrollToBottom).not.toHaveBeenCalled();
+    expect(resize).toHaveBeenCalledWith({
+      threadId,
+      terminalId: "secondary",
+      cols: 90,
+      rows: 30,
+    });
   });
 });

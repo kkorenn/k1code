@@ -13,6 +13,7 @@ import {
 } from "react";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
+import { readTerminalTypographyFromApp } from "../appTypography";
 import { openInPreferredEditor } from "../editorPreferences";
 import {
   extractTerminalLinks,
@@ -109,6 +110,87 @@ function terminalThemeFromApp(): ITheme {
   };
 }
 
+interface TerminalGeometrySyncApi {
+  terminal: {
+    resize(args: {
+      threadId: ThreadId;
+      terminalId: string;
+      cols: number;
+      rows: number;
+    }): Promise<unknown>;
+  };
+}
+
+interface TerminalGeometrySyncTerminal {
+  buffer: {
+    active: {
+      viewportY: number;
+      baseY: number;
+    };
+  };
+  cols: number;
+  rows: number;
+  scrollToBottom(): void;
+}
+
+interface TerminalGeometrySyncFitAddon {
+  fit(): void;
+}
+
+export function syncTerminalGeometryWithBackend(options: {
+  api: TerminalGeometrySyncApi;
+  terminal: TerminalGeometrySyncTerminal;
+  fitAddon: TerminalGeometrySyncFitAddon;
+  threadId: ThreadId;
+  terminalId: string;
+}): void {
+  const { api, terminal, fitAddon, threadId, terminalId } = options;
+  const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+  fitAddon.fit();
+  if (wasAtBottom) {
+    terminal.scrollToBottom();
+  }
+  void api.terminal
+    .resize({
+      threadId,
+      terminalId,
+      cols: terminal.cols,
+      rows: terminal.rows,
+    })
+    .catch(() => undefined);
+}
+
+interface TerminalAppearanceUpdateTerminal {
+  options: {
+    theme?: ITheme | undefined;
+    fontFamily?: string | undefined;
+    fontSize?: number | undefined;
+  };
+  rows: number;
+  refresh(start: number, end: number): void;
+}
+
+export function applyTerminalAppearanceUpdate(options: {
+  terminal: TerminalAppearanceUpdateTerminal;
+  theme: ITheme;
+  typography: { fontFamily: string; fontSize: number };
+}): "refresh" | "geometry" {
+  const { terminal, theme, typography } = options;
+  terminal.options.theme = theme;
+
+  const fontFamilyChanged = terminal.options.fontFamily !== typography.fontFamily;
+  const fontSizeChanged = terminal.options.fontSize !== typography.fontSize;
+
+  if (!fontFamilyChanged && !fontSizeChanged) {
+    terminal.refresh(0, Math.max(terminal.rows - 1, 0));
+    return "refresh";
+  }
+
+  terminal.options.fontFamily = typography.fontFamily;
+  terminal.options.fontSize = typography.fontSize;
+  return "geometry";
+}
+
 function getTerminalSelectionRect(mountElement: HTMLElement): DOMRect | null {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -190,8 +272,6 @@ interface TerminalViewportProps {
   onAddTerminalContext: (selection: TerminalContextSelection) => void;
   focusRequestId: number;
   autoFocus: boolean;
-  resizeEpoch: number;
-  drawerHeight: number;
 }
 
 function TerminalViewport({
@@ -204,8 +284,6 @@ function TerminalViewport({
   onAddTerminalContext,
   focusRequestId,
   autoFocus,
-  resizeEpoch,
-  drawerHeight,
 }: TerminalViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -238,13 +316,14 @@ function TerminalViewport({
 
     let disposed = false;
 
+    const terminalTypography = readTerminalTypographyFromApp();
     const fitAddon = new FitAddon();
     const terminal = new Terminal({
       cursorBlink: true,
       lineHeight: 1.2,
-      fontSize: 12,
+      fontSize: terminalTypography.fontSize,
       scrollback: 5_000,
-      fontFamily: '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+      fontFamily: terminalTypography.fontFamily,
       theme: terminalThemeFromApp(),
     });
     terminal.loadAddon(fitAddon);
@@ -256,6 +335,27 @@ function TerminalViewport({
 
     const api = readNativeApi();
     if (!api) return;
+    let geometrySyncFrame: number | null = null;
+
+    const scheduleGeometrySync = () => {
+      if (geometrySyncFrame !== null) {
+        return;
+      }
+
+      geometrySyncFrame = window.requestAnimationFrame(() => {
+        geometrySyncFrame = null;
+        const latestTerminal = terminalRef.current;
+        const latestFitAddon = fitAddonRef.current;
+        if (!latestTerminal || !latestFitAddon) return;
+        syncTerminalGeometryWithBackend({
+          api,
+          terminal: latestTerminal,
+          fitAddon: latestFitAddon,
+          threadId,
+          terminalId,
+        });
+      });
+    };
 
     const clearSelectionAction = () => {
       selectionActionRequestIdRef.current += 1;
@@ -458,16 +558,33 @@ function TerminalViewport({
     window.addEventListener("mouseup", handleMouseUp);
     mount.addEventListener("pointerdown", handlePointerDown);
 
-    const themeObserver = new MutationObserver(() => {
+    const syncTerminalAppearance = () => {
       const activeTerminal = terminalRef.current;
       if (!activeTerminal) return;
-      activeTerminal.options.theme = terminalThemeFromApp();
-      activeTerminal.refresh(0, activeTerminal.rows - 1);
-    });
-    themeObserver.observe(document.documentElement, {
+
+      const action = applyTerminalAppearanceUpdate({
+        terminal: activeTerminal,
+        theme: terminalThemeFromApp(),
+        typography: readTerminalTypographyFromApp(),
+      });
+
+      if (action === "geometry") {
+        scheduleGeometrySync();
+      }
+    };
+
+    const appearanceObserver = new MutationObserver(syncTerminalAppearance);
+    appearanceObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class", "style"],
     });
+    let containerResizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      containerResizeObserver = new ResizeObserver(() => {
+        scheduleGeometrySync();
+      });
+      containerResizeObserver.observe(mount);
+    }
 
     const openTerminal = async () => {
       try {
@@ -563,20 +680,13 @@ function TerminalViewport({
       const activeTerminal = terminalRef.current;
       const activeFitAddon = fitAddonRef.current;
       if (!activeTerminal || !activeFitAddon) return;
-      const wasAtBottom =
-        activeTerminal.buffer.active.viewportY >= activeTerminal.buffer.active.baseY;
-      activeFitAddon.fit();
-      if (wasAtBottom) {
-        activeTerminal.scrollToBottom();
-      }
-      void api.terminal
-        .resize({
-          threadId,
-          terminalId,
-          cols: activeTerminal.cols,
-          rows: activeTerminal.rows,
-        })
-        .catch(() => undefined);
+      syncTerminalGeometryWithBackend({
+        api,
+        terminal: activeTerminal,
+        fitAddon: activeFitAddon,
+        threadId,
+        terminalId,
+      });
     }, 30);
     void openTerminal();
 
@@ -592,7 +702,11 @@ function TerminalViewport({
       }
       window.removeEventListener("mouseup", handleMouseUp);
       mount.removeEventListener("pointerdown", handlePointerDown);
-      themeObserver.disconnect();
+      if (geometrySyncFrame !== null) {
+        window.cancelAnimationFrame(geometrySyncFrame);
+      }
+      appearanceObserver.disconnect();
+      containerResizeObserver?.disconnect();
       terminalRef.current = null;
       fitAddonRef.current = null;
       terminal.dispose();
@@ -614,30 +728,6 @@ function TerminalViewport({
     };
   }, [autoFocus, focusRequestId]);
 
-  useEffect(() => {
-    const api = readNativeApi();
-    const terminal = terminalRef.current;
-    const fitAddon = fitAddonRef.current;
-    if (!api || !terminal || !fitAddon) return;
-    const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-    const frame = window.requestAnimationFrame(() => {
-      fitAddon.fit();
-      if (wasAtBottom) {
-        terminal.scrollToBottom();
-      }
-      void api.terminal
-        .resize({
-          threadId,
-          terminalId,
-          cols: terminal.cols,
-          rows: terminal.rows,
-        })
-        .catch(() => undefined);
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [drawerHeight, resizeEpoch, terminalId, threadId]);
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden rounded-[4px]" />
   );
@@ -714,7 +804,6 @@ export default function ThreadTerminalDrawer({
   onAddTerminalContext,
 }: ThreadTerminalDrawerProps) {
   const [drawerHeight, setDrawerHeight] = useState(() => clampDrawerHeight(height));
-  const [resizeEpoch, setResizeEpoch] = useState(0);
   const drawerHeightRef = useRef(drawerHeight);
   const lastSyncedHeightRef = useRef(clampDrawerHeight(height));
   const onHeightChangeRef = useRef(onHeightChange);
@@ -905,7 +994,6 @@ export default function ThreadTerminalDrawer({
         return;
       }
       syncHeight(drawerHeightRef.current);
-      setResizeEpoch((value) => value + 1);
     },
     [syncHeight],
   );
@@ -921,7 +1009,6 @@ export default function ThreadTerminalDrawer({
       if (!resizeStateRef.current) {
         syncHeight(clampedHeight);
       }
-      setResizeEpoch((value) => value + 1);
     };
     window.addEventListener("resize", onWindowResize);
     return () => {
@@ -1015,8 +1102,6 @@ export default function ThreadTerminalDrawer({
                         onAddTerminalContext={onAddTerminalContext}
                         focusRequestId={focusRequestId}
                         autoFocus={terminalId === resolvedActiveTerminalId}
-                        resizeEpoch={resizeEpoch}
-                        drawerHeight={drawerHeight}
                       />
                     </div>
                   </div>
@@ -1035,8 +1120,6 @@ export default function ThreadTerminalDrawer({
                   onAddTerminalContext={onAddTerminalContext}
                   focusRequestId={focusRequestId}
                   autoFocus
-                  resizeEpoch={resizeEpoch}
-                  drawerHeight={drawerHeight}
                 />
               </div>
             )}
