@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import {
+  type ModelSlug,
   type ProviderKind,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
 } from "@t3tools/contracts";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import {
-  getAppModelOptions,
+  getCustomModelOptionsByProvider,
   getCustomModelsForProvider,
   getDefaultCustomModelsForProvider,
   MAX_CUSTOM_MODEL_LENGTH,
@@ -34,6 +35,7 @@ import {
 } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
+import { ProviderModelPicker } from "../components/chat/ProviderModelPicker";
 import { SidebarInset } from "~/components/ui/sidebar";
 
 const THEME_OPTIONS = [
@@ -86,17 +88,11 @@ function SettingsRouteView() {
 
   const textGenProvider = settings.textGenerationProvider;
   const textGenDefaultModel = DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[textGenProvider];
-  const gitTextGenerationModelOptions = getAppModelOptions(
-    textGenProvider,
-    textGenProvider === "codex" ? settings.customCodexModels : settings.customClaudeModels,
-    settings.textGenerationModel,
-    providerModelsQuery.data?.codex,
+  const textGenModel = (settings.textGenerationModel ?? textGenDefaultModel) as ModelSlug;
+  const gitModelOptionsByProvider = getCustomModelOptionsByProvider(
+    settings,
+    providerModelsQuery.data,
   );
-  const selectedGitTextGenerationModelLabel =
-    gitTextGenerationModelOptions.find(
-      (option) =>
-        option.slug === (settings.textGenerationModel ?? textGenDefaultModel),
-    )?.name ?? settings.textGenerationModel;
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -522,75 +518,27 @@ function SettingsRouteView() {
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Text generation provider
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Which AI provider to use for auto-generated git content.
-                    </p>
-                  </div>
-                  <Select
-                    value={textGenProvider}
-                    onValueChange={(value) => {
-                      if (value === "codex" || value === "claudeAgent") {
-                        updateSettings({
-                          textGenerationProvider: value,
-                          textGenerationModel:
-                            DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[value],
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      className="w-full shrink-0 sm:w-48"
-                      aria-label="Git text generation provider"
-                    >
-                      <SelectValue>
-                        {textGenProvider === "claudeAgent" ? "Claude" : "Codex"}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup align="end">
-                      <SelectItem value="codex">Codex</SelectItem>
-                      <SelectItem value="claudeAgent">Claude</SelectItem>
-                    </SelectPopup>
-                  </Select>
+              <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Text generation model
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Provider and model used for auto-generated git content.
+                  </p>
                 </div>
-
-                <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">Text generation model</p>
-                    <p className="text-xs text-muted-foreground">
-                      Model used for auto-generated git content.
-                    </p>
-                  </div>
-                  <Select
-                    value={settings.textGenerationModel ?? textGenDefaultModel}
-                    onValueChange={(value) => {
-                      if (value) {
-                        updateSettings({
-                          textGenerationModel: value,
-                        });
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      className="w-full shrink-0 sm:w-48"
-                      aria-label="Git text generation model"
-                    >
-                      <SelectValue>{selectedGitTextGenerationModelLabel}</SelectValue>
-                    </SelectTrigger>
-                    <SelectPopup align="end">
-                      {gitTextGenerationModelOptions.map((option) => (
-                        <SelectItem key={option.slug} value={option.slug}>
-                          {option.name}
-                        </SelectItem>
-                      ))}
-                    </SelectPopup>
-                  </Select>
-                </div>
+                <ProviderModelPicker
+                  provider={textGenProvider}
+                  model={textGenModel}
+                  lockedProvider={null}
+                  modelOptionsByProvider={gitModelOptionsByProvider}
+                  onProviderModelChange={(provider, model) => {
+                    updateSettings({
+                      textGenerationProvider: provider,
+                      textGenerationModel: model,
+                    });
+                  }}
+                />
               </div>
 
               {(settings.textGenerationModel !== defaults.textGenerationModel ||
