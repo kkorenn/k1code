@@ -733,7 +733,8 @@ export default function Sidebar() {
       if (!thread) return;
       const threadWorkspacePath =
         thread.worktreePath ?? projectCwdById.get(thread.projectId) ?? null;
-      const isThreadRunning = thread.session !== null && thread.session.status !== "closed";
+      const isThreadRunning =
+        thread.session?.status === "running" && thread.session.activeTurnId != null;
       const clicked = await api.contextMenu.show(
         [
           { id: "rename", label: "Rename thread" },

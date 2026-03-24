@@ -37,7 +37,7 @@ export function useThreadActions() {
       if (!api) return;
       const thread = threads.find((entry) => entry.id === threadId);
       if (!thread) return;
-      if (thread.session && thread.session.status !== "closed") {
+      if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
         throw new Error("Cannot archive a running thread.");
       }
 
