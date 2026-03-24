@@ -8,8 +8,12 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
-import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL, ThreadId } from "@t3tools/contracts";
-import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  type ProviderKind,
+  DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
+  ThreadId,
+} from "@k1tools/contracts";
+import { getModelOptions, normalizeModelSlug } from "@k1tools/shared/model";
 
 import {
   getAppModelOptions,
@@ -90,10 +94,13 @@ const INSTALL_PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
 ] as const;
 
 const DEFAULT_CUSTOM_MODEL_PROVIDER = "codex" as const;
-const EMPTY_CUSTOM_MODEL_INPUT_BY_PROVIDER = { codex: "", claudeAgent: "" } satisfies Record<
-  ProviderKind,
-  string
->;
+const EMPTY_CUSTOM_MODEL_INPUT_BY_PROVIDER = {
+  codex: "",
+  claudeAgent: "",
+  gemini: "",
+  cursor: "",
+  openCode: "",
+} satisfies Record<ProviderKind, string>;
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -195,8 +202,8 @@ export function useSettingsRestore(onRestored?: () => void) {
     settings.codexBinaryPath !== defaults.codexBinaryPath ||
     settings.codexHomePath !== defaults.codexHomePath;
   const isGitTextGenerationModelDirty =
-    (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL) !==
-    (defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL);
+    (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex) !==
+    (defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex);
   const changedSettingLabels = useMemo(
     () => [
       ...(theme !== "system" ? ["Theme"] : []),
@@ -211,7 +218,11 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Delete confirmation"]
         : []),
       ...(isGitTextGenerationModelDirty ? ["Git writing model"] : []),
-      ...(settings.customCodexModels.length > 0 || settings.customClaudeModels.length > 0
+      ...(settings.customCodexModels.length > 0 ||
+      settings.customClaudeModels.length > 0 ||
+      settings.customGeminiModels.length > 0 ||
+      settings.customCursorModels.length > 0 ||
+      settings.customOpenCodeModels.length > 0
         ? ["Custom models"]
         : []),
       ...(isInstallSettingsDirty ? ["Provider installs"] : []),
@@ -226,8 +237,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.confirmThreadDelete,
       settings.customClaudeModels.length,
       settings.customCodexModels.length,
+      settings.customCursorModels.length,
       settings.defaultThreadEnvMode,
       settings.enableAssistantStreaming,
+      settings.customGeminiModels.length,
+      settings.customOpenCodeModels.length,
       settings.timestampFormat,
       theme,
     ],
@@ -442,9 +456,9 @@ export function ModelsSettingsPanel() {
     settings.textGenerationModel,
   );
   const currentGitTextGenerationModel =
-    settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL;
+    settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex;
   const defaultGitTextGenerationModel =
-    defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL;
+    defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex;
   const isGitTextGenerationModelDirty =
     currentGitTextGenerationModel !== defaultGitTextGenerationModel;
   const selectedGitTextGenerationModelLabel =
@@ -455,7 +469,12 @@ export function ModelsSettingsPanel() {
   )!;
   const selectedCustomModelInput = customModelInputByProvider[selectedCustomModelProvider];
   const selectedCustomModelError = customModelErrorByProvider[selectedCustomModelProvider] ?? null;
-  const totalCustomModels = settings.customCodexModels.length + settings.customClaudeModels.length;
+  const totalCustomModels =
+    settings.customCodexModels.length +
+    settings.customClaudeModels.length +
+    settings.customGeminiModels.length +
+    settings.customCursorModels.length +
+    settings.customOpenCodeModels.length;
   const savedCustomModelRows = MODEL_PROVIDER_SETTINGS.flatMap((providerSettings) =>
     getCustomModelsForProvider(settings, providerSettings.provider).map((slug) => ({
       key: `${providerSettings.provider}:${slug}`,
@@ -570,6 +589,9 @@ export function ModelsSettingsPanel() {
                   updateSettings({
                     customCodexModels: defaults.customCodexModels,
                     customClaudeModels: defaults.customClaudeModels,
+                    customGeminiModels: defaults.customGeminiModels,
+                    customCursorModels: defaults.customCursorModels,
+                    customOpenCodeModels: defaults.customOpenCodeModels,
                   });
                   setCustomModelErrorByProvider({});
                   setShowAllCustomModels(false);
@@ -583,9 +605,7 @@ export function ModelsSettingsPanel() {
               <Select
                 value={selectedCustomModelProvider}
                 onValueChange={(value) => {
-                  if (value === "codex" || value === "claudeAgent") {
-                    setSelectedCustomModelProvider(value);
-                  }
+                  setSelectedCustomModelProvider(value as ProviderKind);
                 }}
               >
                 <SelectTrigger
@@ -695,7 +715,9 @@ export function AdvancedSettingsPanel() {
   const availableEditors = serverConfigQuery.data?.availableEditors;
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
-  const [openInstallProviders, setOpenInstallProviders] = useState<Record<ProviderKind, boolean>>({
+  const [openInstallProviders, setOpenInstallProviders] = useState<
+    Partial<Record<ProviderKind, boolean>>
+  >({
     codex: Boolean(settings.codexBinaryPath || settings.codexHomePath),
     claudeAgent: Boolean(settings.claudeBinaryPath),
   });

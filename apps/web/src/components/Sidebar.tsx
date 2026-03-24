@@ -1765,7 +1765,9 @@ export default function Sidebar() {
                   >
                     <PlusIcon
                       className={`size-3.5 transition-transform duration-150 ${
-                        isAddProjectMenuOpen || shouldShowProjectPathEntry ? "rotate-90" : "rotate-0"
+                        isAddProjectMenuOpen || shouldShowProjectPathEntry
+                          ? "rotate-90"
+                          : "rotate-0"
                       }`}
                     />
                   </MenuTrigger>

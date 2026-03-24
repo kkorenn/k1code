@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@k1tools/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useCallback } from "react";

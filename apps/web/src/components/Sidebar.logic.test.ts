@@ -12,7 +12,7 @@ import {
   sortProjectsForSidebar,
   sortThreadsForSidebar,
 } from "./Sidebar.logic";
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { ProjectId, ThreadId } from "@k1tools/contracts";
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -371,6 +371,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     error: null,
     createdAt: "2026-03-09T10:00:00.000Z",
     updatedAt: "2026-03-09T10:00:00.000Z",
+    archivedAt: null,
     latestTurn: null,
     branch: null,
     worktreePath: null,
