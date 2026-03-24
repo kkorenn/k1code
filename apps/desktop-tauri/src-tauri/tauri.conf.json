@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "K1 Code",
+  "version": "0.2.0",
+  "identifier": "com.k1tools.k1code",
+  "build": {
+    "frontendDist": "../../web/dist",
+    "devUrl": "http://localhost:5733",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "K1 Code",
+        "width": 1100,
+        "height": 780,
+        "minWidth": 840,
+        "minHeight": 620,
+        "create": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": ["../../server/dist"],
+    "icon": [
+      "../../desktop/resources/icon.png",
+      "../../desktop/resources/icon.ico",
+      "../../desktop/resources/icon.icns"
+    ]
+  }
+}

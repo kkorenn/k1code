@@ -63,6 +63,24 @@
   animation-duration: 0s !important;
 }
 
+@keyframes route-transition-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .route-transition-enter {
+    animation: route-transition-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+}
+
 :root {
   color-scheme: light;
   --radius: 0.625rem;

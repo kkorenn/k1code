@@ -322,6 +322,7 @@ export default function Sidebar() {
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
+  const isMacDesktop = isElectron && isMacPlatform(navigator.platform);
   const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
   const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop;
   const shouldShowProjectPathEntry = addingProject && !shouldBrowseForProjectImmediately;
@@ -1316,7 +1317,9 @@ export default function Sidebar() {
     <>
       {isElectron ? (
         <>
-          <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 pl-[90px]">
+          <SidebarHeader
+            className={`drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 ${isMacDesktop ? "pl-[90px]" : ""}`}
+          >
             {wordmark}
             {showDesktopUpdateButton && (
               <Tooltip>

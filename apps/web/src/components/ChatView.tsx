@@ -427,6 +427,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [localDraftErrorsByThreadId, setLocalDraftErrorsByThreadId] = useState<
     Record<ThreadId, string | null>
   >({});
+  const [queuedSendRequestedAt, setQueuedSendRequestedAt] = useState<string | null>(null);
   const [sendPhase, setSendPhase] = useState<SendPhase>("idle");
   const [sendStartedAt, setSendStartedAt] = useState<string | null>(null);
   const [isConnecting, _setIsConnecting] = useState(false);
@@ -915,6 +916,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     !showPlanFollowUpPrompt;
   const activePendingApproval = pendingApprovals[0] ?? null;
   const isComposerApprovalState = activePendingApproval !== null;
+  const hasQueuedSend = queuedSendRequestedAt !== null;
   const hasComposerHeader =
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
@@ -922,6 +924,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     showDeferredImplementationPrompt;
   const composerFooterHasWideActions =
     showPlanFollowUpPrompt || showDeferredImplementationPrompt || activePendingProgress !== null;
+  const canQueueComposerSubmission =
+    !isComposerApprovalState &&
+    activePendingProgress === null &&
+    (showPlanFollowUpPrompt ||
+      showDeferredImplementationPrompt ||
+      composerSendState.hasSendableContent);
   const lastSyncedPendingInputRef = useRef<{
     requestId: string | null;
     questionId: string | null;
@@ -2311,6 +2319,18 @@ export default function ChatView({ threadId }: ChatViewProps) {
     setSendStartedAt(null);
   }, []);
 
+  const queueComposerSend = useCallback((): boolean => {
+    if (!canQueueComposerSubmission) {
+      return false;
+    }
+    setQueuedSendRequestedAt((current) => current ?? new Date().toISOString());
+    return true;
+  }, [canQueueComposerSubmission]);
+
+  const clearQueuedComposerSend = useCallback(() => {
+    setQueuedSendRequestedAt(null);
+  }, []);
+
   useEffect(() => {
     if (sendPhase === "idle") {
       return;
@@ -2330,6 +2350,48 @@ export default function ChatView({ threadId }: ChatViewProps) {
     phase,
     resetSendPhase,
     sendPhase,
+  ]);
+
+  useEffect(() => {
+    if (!queuedSendRequestedAt) {
+      return;
+    }
+    if (!activeThread) {
+      setQueuedSendRequestedAt(null);
+      return;
+    }
+    if (
+      phase === "running" ||
+      isSendBusy ||
+      isConnecting ||
+      sendInFlightRef.current ||
+      isRevertingCheckpoint ||
+      activePendingApproval !== null ||
+      activePendingUserInput !== null
+    ) {
+      return;
+    }
+    if (!canQueueComposerSubmission) {
+      setQueuedSendRequestedAt(null);
+      return;
+    }
+    setQueuedSendRequestedAt(null);
+    const frame = window.requestAnimationFrame(() => {
+      composerFormRef.current?.requestSubmit();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [
+    activePendingApproval,
+    activePendingUserInput,
+    activeThread,
+    canQueueComposerSubmission,
+    isConnecting,
+    isRevertingCheckpoint,
+    isSendBusy,
+    phase,
+    queuedSendRequestedAt,
   ]);
 
   useEffect(() => {
@@ -2589,9 +2651,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const onSend = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
     const api = readNativeApi();
-    if (!api || !activeThread || isSendBusy || isConnecting || sendInFlightRef.current) return;
+    if (!api || !activeThread) return;
     if (activePendingProgress) {
       onAdvanceActivePendingUserInput();
+      return;
+    }
+    if (
+      phase === "running" ||
+      isSendBusy ||
+      isConnecting ||
+      sendInFlightRef.current ||
+      isRevertingCheckpoint
+    ) {
+      queueComposerSend();
       return;
     }
     let promptForSend = promptRef.current;
@@ -3644,7 +3716,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   // Empty state: no active thread
   if (!activeThread) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
+      <div className="route-transition-enter flex min-h-0 min-w-0 flex-1 flex-col bg-background text-muted-foreground/40">
         {!isElectron && (
           <header className="border-b border-border px-3 py-2 md:hidden">
             <div className="flex items-center gap-2">
@@ -3668,7 +3740,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
+    <div className="route-transition-enter flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
       {/* Top bar */}
       <header
         className={cn(
@@ -4195,6 +4267,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             Preparing worktree...
                           </span>
                         ) : null}
+                        {hasQueuedSend ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground/70 text-xs">Steer queued</span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 rounded-full px-2 text-xs text-muted-foreground/80 hover:text-foreground"
+                              onClick={clearQueuedComposerSend}
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        ) : null}
                         {activePendingProgress ? (
                           <div className="flex items-center gap-2">
                             {activePendingProgress.questionIndex > 0 ? (
@@ -4227,22 +4313,35 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             </Button>
                           </div>
                         ) : phase === "running" ? (
-                          <button
-                            type="button"
-                            className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
-                            onClick={() => void onInterrupt()}
-                            aria-label="Stop generation"
-                          >
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 12 12"
-                              fill="currentColor"
-                              aria-hidden="true"
+                          <div className="flex items-center gap-2">
+                            {!hasQueuedSend && canQueueComposerSubmission ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 rounded-full px-3 text-xs"
+                                onClick={queueComposerSend}
+                              >
+                                Queue steer
+                              </Button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
+                              onClick={() => void onInterrupt()}
+                              aria-label="Stop generation"
                             >
-                              <rect x="2" y="2" width="8" height="8" rx="1.5" />
-                            </svg>
-                          </button>
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 12 12"
+                                fill="currentColor"
+                                aria-hidden="true"
+                              >
+                                <rect x="2" y="2" width="8" height="8" rx="1.5" />
+                              </svg>
+                            </button>
+                          </div>
                         ) : pendingUserInputs.length === 0 ? (
                           showPlanFollowUpPrompt ? (
                             prompt.trim().length > 0 ? (

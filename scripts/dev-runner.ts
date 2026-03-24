@@ -31,6 +31,13 @@ const MODE_ARGS = {
   "dev:server": ["run", "dev", "--filter=k1"],
   "dev:web": ["run", "dev", "--filter=@k1tools/web"],
   "dev:desktop": ["run", "dev", "--filter=@k1tools/desktop", "--filter=@k1tools/web", "--parallel"],
+  "dev:desktop-tauri": [
+    "run",
+    "dev",
+    "--filter=@k1tools/desktop-tauri",
+    "--filter=@k1tools/web",
+    "--parallel",
+  ],
 } as const satisfies Record<string, ReadonlyArray<string>>;
 
 type DevMode = keyof typeof MODE_ARGS;
@@ -193,6 +200,10 @@ export function createDevRunnerEnv({
 
     if (mode === "dev:server" || mode === "dev:web") {
       output.K1CODE_MODE = "web";
+      delete output.K1CODE_DESKTOP_WS_URL;
+    }
+
+    if (mode === "dev:desktop-tauri") {
       delete output.K1CODE_DESKTOP_WS_URL;
     }
 
