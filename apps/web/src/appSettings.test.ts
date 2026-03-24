@@ -260,6 +260,7 @@ describe("AppSettingsSchema", () => {
       codexBinaryPath: "/usr/local/bin/codex",
       geminiBinaryPath: "",
       codexHomePath: "",
+      newProjectBasePath: "",
       defaultThreadEnvMode: "local",
       confirmThreadDelete: false,
       enableAssistantStreaming: false,

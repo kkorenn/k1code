@@ -31,6 +31,15 @@ import {
 } from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 import {
   Select,
@@ -75,6 +84,9 @@ function SettingsRouteView() {
   const providerModelsQuery = useQuery(serverProviderModelsQueryOptions());
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
+  const [isProjectBasePathDialogOpen, setIsProjectBasePathDialogOpen] = useState(false);
+  const [isPickingProjectBasePath, setIsPickingProjectBasePath] = useState(false);
+  const [projectBasePathDraft, setProjectBasePathDraft] = useState("");
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
@@ -89,6 +101,7 @@ function SettingsRouteView() {
   const codexBinaryPath = settings.codexBinaryPath;
   const geminiBinaryPath = settings.geminiBinaryPath;
   const codexHomePath = settings.codexHomePath;
+  const newProjectBasePath = settings.newProjectBasePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
 
@@ -204,6 +217,43 @@ function SettingsRouteView() {
     },
     [settings, updateSettings],
   );
+
+  const openProjectBasePathDialog = useCallback(() => {
+    setProjectBasePathDraft(settings.newProjectBasePath);
+    setIsProjectBasePathDialogOpen(true);
+  }, [settings.newProjectBasePath]);
+
+  const closeProjectBasePathDialog = useCallback((open: boolean) => {
+    setIsProjectBasePathDialogOpen(open);
+    if (!open) {
+      setIsPickingProjectBasePath(false);
+      setProjectBasePathDraft("");
+    }
+  }, []);
+
+  const saveProjectBasePath = useCallback(() => {
+    const normalizedPath = projectBasePathDraft.trim();
+    updateSettings({
+      newProjectBasePath: normalizedPath,
+    });
+    setProjectBasePathDraft(normalizedPath);
+    setIsProjectBasePathDialogOpen(false);
+  }, [projectBasePathDraft, updateSettings]);
+
+  const pickProjectBasePath = useCallback(async () => {
+    if (isPickingProjectBasePath) return;
+
+    setIsPickingProjectBasePath(true);
+    try {
+      const api = ensureNativeApi();
+      const pickedPath = await api.dialogs.pickFolder();
+      if (!pickedPath) return;
+
+      setProjectBasePathDraft(pickedPath);
+    } finally {
+      setIsPickingProjectBasePath(false);
+    }
+  }, [isPickingProjectBasePath]);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -353,7 +403,49 @@ function SettingsRouteView() {
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Provider CLI Overrides</h2>
+                <h2 className="text-sm font-medium text-foreground">Projects</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Optionally choose where newly created empty project folders should live by
+                  default. If unset, the create-project dialog starts in your Documents folder.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      New project directory base path
+                    </p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+                      {newProjectBasePath || "Not set"}
+                    </p>
+                  </div>
+                  <Button size="xs" variant="outline" onClick={openProjectBasePathDialog}>
+                    {newProjectBasePath ? "Edit path" : "Set path"}
+                  </Button>
+                </div>
+
+                {newProjectBasePath ? (
+                  <div className="flex justify-end">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        updateSettings({
+                          newProjectBasePath: defaults.newProjectBasePath,
+                        })
+                      }
+                    >
+                      Restore default
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Codex App Server</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   These overrides apply to new sessions and let you choose non-default provider
                   binaries.
@@ -941,6 +1033,57 @@ function SettingsRouteView() {
           </div>
         </div>
       </div>
+
+      <Dialog open={isProjectBasePathDialogOpen} onOpenChange={closeProjectBasePathDialog}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>Default new project path</DialogTitle>
+            <DialogDescription>
+              Enter the full base path where new empty project folders should be created.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="space-y-4 pt-0" scrollFade={false}>
+            <label htmlFor="new-project-base-path" className="block space-y-2">
+              <span className="text-xs font-medium text-foreground">Full path</span>
+              <div className="flex gap-2">
+                <Input
+                  id="new-project-base-path"
+                  value={projectBasePathDraft}
+                  onChange={(event) => setProjectBasePathDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    saveProjectBasePath();
+                  }}
+                  placeholder="/Users/you/Developer/sandboxes"
+                  spellCheck={false}
+                  autoFocus
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void pickProjectBasePath()}
+                  disabled={isPickingProjectBasePath}
+                >
+                  {isPickingProjectBasePath ? "Selecting..." : "Select"}
+                </Button>
+              </div>
+            </label>
+          </DialogPanel>
+          <DialogFooter variant="bare" className="pt-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => closeProjectBasePathDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={saveProjectBasePath}>
+              Save path
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
     </SidebarInset>
   );
 }
