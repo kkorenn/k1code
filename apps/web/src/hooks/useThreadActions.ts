@@ -16,7 +16,7 @@ export function useThreadActions() {
   const threads = useStore((store) => store.threads);
   const projects = useStore((store) => store.projects);
   const { settings: appSettings } = useAppSettings();
-  const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearThreadDraft);
+  const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearDraftThread);
   const clearProjectDraftThreadById = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadById,
   );
