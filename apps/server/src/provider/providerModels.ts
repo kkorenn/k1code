@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import readline from "node:readline";
 import { stripVTControlCharacters } from "node:util";
 
@@ -54,6 +56,67 @@ const OPENCODE_MODEL_DISCOVERY_COMMANDS: ReadonlyArray<ModelDiscoveryCommand> = 
   { binary: "opencode", args: ["models", "openai"] },
   { binary: "opencode", args: ["--help"] },
 ];
+
+function hasExecutable(candidatePath: string): boolean {
+  try {
+    fs.accessSync(
+      candidatePath,
+      process.platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isBinaryAvailable(binary: string): boolean {
+  const trimmedBinary = binary.trim();
+  if (!trimmedBinary) {
+    return false;
+  }
+
+  if (trimmedBinary.includes("/") || trimmedBinary.includes("\\")) {
+    return hasExecutable(trimmedBinary);
+  }
+
+  const pathValue = process.env.PATH;
+  if (!pathValue) {
+    return false;
+  }
+
+  const pathEntries = pathValue
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  if (pathEntries.length === 0) {
+    return false;
+  }
+
+  if (process.platform !== "win32") {
+    return pathEntries.some((entry) => hasExecutable(path.join(entry, trimmedBinary)));
+  }
+
+  const pathExt = process.env.PATHEXT;
+  const extensions = pathExt
+    ? pathExt
+        .split(";")
+        .map((ext) => ext.trim())
+        .filter((ext) => ext.length > 0)
+    : [".EXE", ".CMD", ".BAT", ".COM"];
+  const hasSuffix = /\.[^./\\]+$/.test(trimmedBinary);
+
+  for (const entry of pathEntries) {
+    if (hasSuffix && hasExecutable(path.join(entry, trimmedBinary))) {
+      return true;
+    }
+    for (const ext of extensions) {
+      if (hasExecutable(path.join(entry, `${trimmedBinary}${ext}`))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 function toProviderModelOption(slug: string): ProviderModelOption | null {
   const normalizedSlug = slug.trim().toLowerCase();
@@ -223,13 +286,21 @@ async function runCommand(
 ): Promise<CommandResult> {
   return await withTimeout(
     new Promise<CommandResult>((resolve, reject) => {
-      const child = spawn(binary, [...args], {
-        shell: process.platform === "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(binary, [...args], {
+          shell: process.platform === "win32",
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (error) {
+        reject(error);
+        return;
+      }
 
       const stdoutChunks: string[] = [];
       const stderrChunks: string[] = [];
+
+      child.once("error", reject);
 
       child.stdout?.on("data", (chunk: Buffer | string) => {
         stdoutChunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
@@ -237,8 +308,6 @@ async function runCommand(
       child.stderr?.on("data", (chunk: Buffer | string) => {
         stderrChunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
       });
-
-      child.once("error", reject);
       child.once("exit", (code, signal) => {
         resolve({
           stdout: stdoutChunks.join(""),
@@ -284,12 +353,6 @@ function parseCodexModelListResult(result: unknown): ProviderModelOption[] {
 }
 
 async function discoverCodexModelsUncached(): Promise<ProviderModelOption[]> {
-  const child = spawn("codex", ["app-server"], {
-    shell: process.platform === "win32",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const output = readline.createInterface({ input: child.stdout });
-
   let nextRequestId = 1;
   let disposed = false;
   const pending = new Map<
@@ -309,6 +372,27 @@ async function discoverCodexModelsUncached(): Promise<ProviderModelOption[]> {
     pending.clear();
   };
 
+  const child = spawn("codex", ["app-server"], {
+    shell: process.platform === "win32",
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  child.once("error", (error) => {
+    rejectPending(error);
+  });
+  child.once("exit", (code, signal) => {
+    if (pending.size === 0) {
+      return;
+    }
+    rejectPending(
+      new Error(`Codex model discovery exited early (code: ${code}, signal: ${signal}).`),
+    );
+  });
+
+  if (!child.stdout) {
+    return [];
+  }
+  const output = readline.createInterface({ input: child.stdout });
+
   const dispose = () => {
     if (disposed) return;
     disposed = true;
@@ -318,7 +402,7 @@ async function discoverCodexModelsUncached(): Promise<ProviderModelOption[]> {
     } catch {
       // Ignore teardown errors.
     }
-    if (!child.stdin.destroyed) {
+    if (child.stdin && !child.stdin.destroyed) {
       child.stdin.end();
     }
     if (!child.killed) {
@@ -330,6 +414,10 @@ async function discoverCodexModelsUncached(): Promise<ProviderModelOption[]> {
     new Promise((resolve, reject) => {
       if (disposed) {
         reject(new Error("Codex model discovery session is closed."));
+        return;
+      }
+      if (!child.stdin || child.stdin.destroyed) {
+        reject(new Error("Codex model discovery session stdin is unavailable."));
         return;
       }
       const payload = `${JSON.stringify(message)}\n`;
@@ -402,18 +490,6 @@ async function discoverCodexModelsUncached(): Promise<ProviderModelOption[]> {
     pendingRequest.resolve(response.result);
   });
 
-  child.once("error", (error) => {
-    rejectPending(error);
-  });
-  child.once("exit", (code, signal) => {
-    if (pending.size === 0) {
-      return;
-    }
-    rejectPending(
-      new Error(`Codex model discovery exited early (code: ${code}, signal: ${signal}).`),
-    );
-  });
-
   try {
     await sendRequest("initialize", buildCodexInitializeParams());
     await writeJsonRpcMessage({
@@ -428,6 +504,10 @@ async function discoverCodexModelsUncached(): Promise<ProviderModelOption[]> {
 }
 
 async function discoverCodexModels(): Promise<ProviderModelOption[]> {
+  if (!isBinaryAvailable("codex")) {
+    return [];
+  }
+
   try {
     return await withTimeout(
       discoverCodexModelsUncached(),
