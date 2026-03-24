@@ -28,7 +28,7 @@ import {
   type ExecuteGitResult,
 } from "../Services/GitCore.ts";
 import { ServerConfig } from "../../config.ts";
-import { decodeJsonResult } from "@t3tools/shared/schemaJson";
+import { decodeJsonResult } from "@k1tools/shared/schemaJson";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
