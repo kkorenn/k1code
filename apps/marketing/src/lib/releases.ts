@@ -1,4 +1,4 @@
-const REPO = "pingdotgg/k1code";
+const REPO = "kkorenn/k1code";
 
 export const RELEASES_URL = `https://github.com/${REPO}/releases`;
 

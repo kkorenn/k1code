@@ -14,7 +14,7 @@ import type {
   ServerProviderStatus,
   ServerProviderStatusState,
 } from "@t3tools/contracts";
-import { Array, Effect, Fiber, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
+import { Array, Effect, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
@@ -28,6 +28,8 @@ const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 const GEMINI_PROVIDER = "gemini" as const;
+const GEMINI_AUTH_REQUIRED_MESSAGE =
+  'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.';
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -41,6 +43,24 @@ function nonEmptyTrimmed(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveHomeDir(): string {
+  const homeFromEnv = nonEmptyTrimmed(process.env.HOME) ?? nonEmptyTrimmed(process.env.USERPROFILE);
+  return homeFromEnv ?? OS.homedir();
+}
+
+function parseBooleanEnvFlag(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
+
+function parseJsonSafely(value: string): unknown | undefined {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function isCommandMissingCause(error: unknown): boolean {
@@ -84,6 +104,70 @@ function extractAuthBoolean(value: unknown): boolean | undefined {
   }
   return undefined;
 }
+
+function extractGeminiSettingsSelectedType(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const root = value as Record<string, unknown>;
+  const security = root.security;
+  if (!security || typeof security !== "object") return undefined;
+  const auth = (security as Record<string, unknown>).auth;
+  if (!auth || typeof auth !== "object") return undefined;
+  const selectedType = (auth as Record<string, unknown>).selectedType;
+  if (typeof selectedType !== "string") return undefined;
+  return nonEmptyTrimmed(selectedType);
+}
+
+const readGeminiSettingsSelectedType = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const settingsPath = path.join(resolveHomeDir(), ".gemini", "settings.json");
+
+  const content = yield* fileSystem
+    .readFileString(settingsPath)
+    .pipe(Effect.orElseSucceed(() => undefined));
+  if (!content) {
+    return undefined;
+  }
+
+  const parsed = parseJsonSafely(content);
+  if (parsed === undefined) {
+    return undefined;
+  }
+  return extractGeminiSettingsSelectedType(parsed);
+});
+
+const hasGeminiOauthCredentials = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const credentialsPath = path.join(resolveHomeDir(), ".gemini", "oauth_creds.json");
+  return yield* fileSystem.exists(credentialsPath).pipe(Effect.orElseSucceed(() => false));
+});
+
+function hasGeminiEnvironmentAuth(): boolean {
+  const hasApiKey = Boolean(nonEmptyTrimmed(process.env.GEMINI_API_KEY));
+  if (hasApiKey) return true;
+  return (
+    parseBooleanEnvFlag(process.env.GOOGLE_GENAI_USE_VERTEXAI) ||
+    parseBooleanEnvFlag(process.env.GOOGLE_GENAI_USE_GCA)
+  );
+}
+
+const isGeminiAuthConfigured = Effect.gen(function* () {
+  if (hasGeminiEnvironmentAuth()) {
+    return true;
+  }
+
+  const selectedType = yield* readGeminiSettingsSelectedType;
+  if (!selectedType) {
+    return false;
+  }
+
+  if (selectedType.toLowerCase() === "oauth-personal") {
+    return yield* hasGeminiOauthCredentials;
+  }
+
+  return true;
+});
 
 export function parseAuthStatusFromOutput(result: CommandResult): {
   readonly status: ServerProviderStatusState;
@@ -614,7 +698,7 @@ export const checkClaudeProviderStatus: Effect.Effect<
 export const checkGeminiProviderStatus: Effect.Effect<
   ServerProviderStatus,
   never,
-  ChildProcessSpawner.ChildProcessSpawner
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
 > = Effect.gen(function* () {
   const checkedAt = new Date().toISOString();
 
@@ -663,13 +747,25 @@ export const checkGeminiProviderStatus: Effect.Effect<
     };
   }
 
+  const authConfigured = yield* isGeminiAuthConfigured;
+  if (!authConfigured) {
+    return {
+      provider: GEMINI_PROVIDER,
+      status: "error" as const,
+      available: true,
+      authStatus: "unauthenticated" as const,
+      checkedAt,
+      message: GEMINI_AUTH_REQUIRED_MESSAGE,
+    } satisfies ServerProviderStatus;
+  }
+
   return {
     provider: GEMINI_PROVIDER,
     status: "ready" as const,
     available: true,
-    authStatus: "unknown" as const,
+    authStatus: "authenticated" as const,
     checkedAt,
-    message: "Gemini CLI is reachable. Authentication status is managed by Gemini CLI.",
+    message: "Gemini CLI is reachable and authentication is configured.",
   } satisfies ServerProviderStatus;
 });
 
@@ -678,15 +774,19 @@ export const checkGeminiProviderStatus: Effect.Effect<
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
-    const statusesFiber = yield* Effect.all(
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const loadStatuses = Effect.all(
       [checkCodexProviderStatus, checkClaudeProviderStatus, checkGeminiProviderStatus],
-      {
-        concurrency: "unbounded",
-      },
-    ).pipe(Effect.forkScoped);
-
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
     return {
-      getStatuses: Fiber.join(statusesFiber),
+      getStatuses: loadStatuses,
     } satisfies ProviderHealthShape;
   }),
 );

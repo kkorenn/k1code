@@ -4,8 +4,8 @@ import { parsePullRequestReference } from "./pullRequestReference";
 
 describe("parsePullRequestReference", () => {
   it("accepts GitHub pull request URLs", () => {
-    expect(parsePullRequestReference("https://github.com/pingdotgg/k1code/pull/42")).toBe(
-      "https://github.com/pingdotgg/k1code/pull/42",
+    expect(parsePullRequestReference("https://github.com/kkorenn/k1code/pull/42")).toBe(
+      "https://github.com/kkorenn/k1code/pull/42",
     );
   });
 

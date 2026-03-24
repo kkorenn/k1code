@@ -14,6 +14,7 @@ import {
 import { create } from "zustand";
 import { type ChatMessage, type Project, type Thread } from "./types";
 import { Debouncer } from "@tanstack/react-pacer";
+import { normalizeProviderErrorMessage } from "./providerErrors";
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -252,6 +253,11 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
     .filter((thread) => thread.deletedAt === null)
     .map((thread) => {
       const existing = existingThreadById.get(thread.id);
+      const sessionProvider = toLegacyProvider(thread.session?.providerName ?? null);
+      const normalizedSessionError = normalizeProviderErrorMessage(
+        thread.session?.lastError ?? null,
+        sessionProvider,
+      );
       return {
         id: thread.id,
         codexThreadId: null,
@@ -274,7 +280,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
               activeTurnId: thread.session.activeTurnId ?? undefined,
               createdAt: thread.session.updatedAt,
               updatedAt: thread.session.updatedAt,
-              ...(thread.session.lastError ? { lastError: thread.session.lastError } : {}),
+              ...(normalizedSessionError ? { lastError: normalizedSessionError } : {}),
             }
           : null,
         messages: thread.messages.map((message) => {
@@ -306,7 +312,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
           createdAt: proposedPlan.createdAt,
           updatedAt: proposedPlan.updatedAt,
         })),
-        error: thread.session?.lastError ?? null,
+        error: normalizedSessionError,
         createdAt: thread.createdAt,
         latestTurn: thread.latestTurn,
         lastVisitedAt: existing?.lastVisitedAt ?? thread.updatedAt,
@@ -403,9 +409,10 @@ export function reorderProjects(
 }
 
 export function setError(state: AppState, threadId: ThreadId, error: string | null): AppState {
+  const normalizedError = normalizeProviderErrorMessage(error);
   const threads = updateThread(state.threads, threadId, (t) => {
-    if (t.error === error) return t;
-    return { ...t, error };
+    if (t.error === normalizedError) return t;
+    return { ...t, error: normalizedError };
   });
   return threads === state.threads ? state : { ...state, threads };
 }

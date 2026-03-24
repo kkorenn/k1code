@@ -13,7 +13,7 @@ npx t3
 
 You can also just install the desktop app. It's cooler.
 
-Install the [desktop app from the Releases page](https://github.com/pingdotgg/k1code/releases)
+Install the [desktop app from the Releases page](https://github.com/kkorenn/k1code/releases)
 
 ## Some notes
 

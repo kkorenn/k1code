@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { CircleAlertIcon, XIcon } from "lucide-react";
+import { normalizeProviderErrorMessage } from "~/providerErrors";
 
 export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
@@ -9,13 +10,14 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error: string | null;
   onDismiss?: () => void;
 }) {
-  if (!error) return null;
+  const normalizedError = normalizeProviderErrorMessage(error);
+  if (!normalizedError) return null;
   return (
     <div className="pt-3 mx-auto max-w-3xl">
       <Alert variant="error">
         <CircleAlertIcon />
-        <AlertDescription className="line-clamp-3" title={error}>
-          {error}
+        <AlertDescription className="line-clamp-3" title={normalizedError}>
+          {normalizedError}
         </AlertDescription>
         {onDismiss && (
           <AlertAction>

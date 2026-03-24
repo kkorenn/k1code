@@ -64,8 +64,12 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
   ],
   gemini: [
+    { slug: "gemini-3-pro-preview", name: "Gemini 3 Pro Preview" },
+    { slug: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
+    { slug: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
     { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
     { slug: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+    { slug: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite" },
   ],
 } as const satisfies Record<ProviderKind, readonly BuiltInModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
@@ -107,10 +111,18 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "claude-haiku-4-5-20251001": "claude-haiku-4-5",
   },
   gemini: {
+    "3-pro": "gemini-3-pro-preview",
+    "3-flash": "gemini-3-flash-preview",
+    "3.1-flash-lite": "gemini-3.1-flash-lite-preview",
+    "gemini-3-pro": "gemini-3-pro-preview",
+    "gemini-3-flash": "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite": "gemini-3.1-flash-lite-preview",
     "2.5-pro": "gemini-2.5-pro",
     "2.5-flash": "gemini-2.5-flash",
+    "2.5-flash-lite": "gemini-2.5-flash-lite",
     "gemini-pro": "gemini-2.5-pro",
     "gemini-flash": "gemini-2.5-flash",
+    "gemini-flash-lite": "gemini-2.5-flash-lite",
   },
 };
 

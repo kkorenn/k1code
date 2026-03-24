@@ -7,6 +7,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   checkClaudeProviderStatus,
   checkCodexProviderStatus,
+  checkGeminiProviderStatus,
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
   parseClaudeAuthStatusFromOutput,
@@ -88,6 +89,87 @@ function withTempCodexHome(configContent?: string) {
 
     if (configContent !== undefined) {
       yield* fileSystem.writeFileString(path.join(tmpDir, "config.toml"), configContent);
+    }
+
+    return { tmpDir } as const;
+  });
+}
+
+/**
+ * Create a temporary HOME scoped to the current Effect test for Gemini auth checks.
+ * Optionally writes `~/.gemini/settings.json` and `~/.gemini/oauth_creds.json`.
+ */
+function withTempGeminiHome(options?: {
+  readonly settingsContent?: string;
+  readonly oauthCredsContent?: string;
+  readonly geminiApiKey?: string;
+}) {
+  return Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-test-gemini-" });
+
+    yield* Effect.acquireRelease(
+      Effect.sync(() => {
+        const originalHome = process.env.HOME;
+        const originalUserProfile = process.env.USERPROFILE;
+        const originalGeminiApiKey = process.env.GEMINI_API_KEY;
+        const originalVertexAi = process.env.GOOGLE_GENAI_USE_VERTEXAI;
+        const originalGca = process.env.GOOGLE_GENAI_USE_GCA;
+
+        process.env.HOME = tmpDir;
+        process.env.USERPROFILE = tmpDir;
+        if (options?.geminiApiKey !== undefined) {
+          process.env.GEMINI_API_KEY = options.geminiApiKey;
+        } else {
+          delete process.env.GEMINI_API_KEY;
+        }
+        delete process.env.GOOGLE_GENAI_USE_VERTEXAI;
+        delete process.env.GOOGLE_GENAI_USE_GCA;
+
+        return {
+          originalHome,
+          originalUserProfile,
+          originalGeminiApiKey,
+          originalVertexAi,
+          originalGca,
+        } as const;
+      }),
+      (originals) =>
+        Effect.sync(() => {
+          if (originals.originalHome !== undefined) process.env.HOME = originals.originalHome;
+          else delete process.env.HOME;
+          if (originals.originalUserProfile !== undefined)
+            process.env.USERPROFILE = originals.originalUserProfile;
+          else delete process.env.USERPROFILE;
+
+          if (originals.originalGeminiApiKey !== undefined)
+            process.env.GEMINI_API_KEY = originals.originalGeminiApiKey;
+          else delete process.env.GEMINI_API_KEY;
+
+          if (originals.originalVertexAi !== undefined)
+            process.env.GOOGLE_GENAI_USE_VERTEXAI = originals.originalVertexAi;
+          else delete process.env.GOOGLE_GENAI_USE_VERTEXAI;
+
+          if (originals.originalGca !== undefined)
+            process.env.GOOGLE_GENAI_USE_GCA = originals.originalGca;
+          else delete process.env.GOOGLE_GENAI_USE_GCA;
+        }),
+    );
+
+    const geminiDir = path.join(tmpDir, ".gemini");
+    yield* fileSystem.makeDirectory(geminiDir, { recursive: true });
+    if (options?.settingsContent !== undefined) {
+      yield* fileSystem.writeFileString(
+        path.join(geminiDir, "settings.json"),
+        options.settingsContent,
+      );
+    }
+    if (options?.oauthCredsContent !== undefined) {
+      yield* fileSystem.writeFileString(
+        path.join(geminiDir, "oauth_creds.json"),
+        options.oauthCredsContent,
+      );
     }
 
     return { tmpDir } as const;
@@ -599,6 +681,76 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
   });
 
   // ── parseClaudeAuthStatusFromOutput pure tests ────────────────────
+
+  describe("checkGeminiProviderStatus", () => {
+    it.effect("returns authenticated when Gemini auth settings are configured", () =>
+      Effect.gen(function* () {
+        yield* withTempGeminiHome({
+          settingsContent: JSON.stringify(
+            { security: { auth: { selectedType: "oauth-personal" } } },
+            null,
+            2,
+          ),
+          oauthCredsContent: '{"access_token":"test"}',
+        });
+        const status = yield* checkGeminiProviderStatus;
+        assert.strictEqual(status.provider, "gemini");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "authenticated");
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "0.34.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("returns unauthenticated when Gemini auth settings are missing", () =>
+      Effect.gen(function* () {
+        yield* withTempGeminiHome();
+        const status = yield* checkGeminiProviderStatus;
+        assert.strictEqual(status.provider, "gemini");
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unauthenticated");
+        assert.strictEqual(
+          status.message,
+          'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.',
+        );
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "0.34.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("returns authenticated when GEMINI_API_KEY is set", () =>
+      Effect.gen(function* () {
+        yield* withTempGeminiHome({ geminiApiKey: "test-key" });
+        const status = yield* checkGeminiProviderStatus;
+        assert.strictEqual(status.provider, "gemini");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "authenticated");
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "0.34.0\n", stderr: "", code: 0 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+  });
 
   describe("parseClaudeAuthStatusFromOutput", () => {
     it("exit code 0 with no auth markers is ready", () => {

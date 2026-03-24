@@ -138,6 +138,7 @@ import {
   useAppSettings,
 } from "../appSettings";
 import { isTerminalFocused } from "../lib/terminalFocus";
+import { isLikelyProviderAuthError, normalizeProviderErrorMessage } from "../providerErrors";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
@@ -226,22 +227,6 @@ function providerLabel(provider: ProviderKind): string {
   }
 }
 
-function isLikelyAuthErrorMessage(message: string | null | undefined): boolean {
-  if (typeof message !== "string") {
-    return false;
-  }
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("not logged in") ||
-    lower.includes("login required") ||
-    lower.includes("authentication required") ||
-    lower.includes("auth method") ||
-    lower.includes("api key") ||
-    lower.includes("unauthorized") ||
-    lower.includes("unauthenticated")
-  );
-}
-
 function authHelpMessageForProvider(provider: ProviderKind): string {
   if (provider === "codex") {
     return "Run `codex login` in your terminal, then try again.";
@@ -257,18 +242,20 @@ function normalizeAuthPromptDetail(input: {
   statusMessage: string | null | undefined;
   sessionLastError: string | null | undefined;
 }): string | null {
-  const statusMessage = input.statusMessage?.trim() ?? "";
-  const sessionLastError = input.sessionLastError?.trim() ?? "";
-
-  if (sessionLastError.length > 0) {
+  const sessionLastError = normalizeProviderErrorMessage(input.sessionLastError, input.provider);
+  if (sessionLastError) {
     return sessionLastError;
   }
 
-  if (statusMessage.length === 0) {
+  const normalizedStatusMessage = normalizeProviderErrorMessage(
+    input.statusMessage,
+    input.provider,
+  );
+  if (!normalizedStatusMessage) {
     return null;
   }
 
-  const lowerStatus = statusMessage.toLowerCase();
+  const lowerStatus = normalizedStatusMessage.toLowerCase();
   if (
     input.provider === "gemini" &&
     (lowerStatus.includes("authentication status is managed by gemini cli") ||
@@ -277,7 +264,7 @@ function normalizeAuthPromptDetail(input: {
     return null;
   }
 
-  return statusMessage;
+  return normalizedStatusMessage;
 }
 
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
@@ -428,6 +415,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     useState<PullRequestDialogState | null>(null);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const authPromptKeyRef = useRef<string | null>(null);
+  const dismissedAuthPromptKeyRef = useRef<string | null>(null);
+  const authStatusRefreshKeyRef = useRef<string | null>(null);
   const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
     Record<string, string[]>
   >({});
@@ -1214,30 +1203,73 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => providerStatuses.find((status) => status.provider === selectedProvider) ?? null,
     [selectedProvider, providerStatuses],
   );
+  const activeSessionProvider = activeThread?.session?.provider ?? null;
+  const activeSessionProviderStatus = useMemo(
+    () =>
+      activeSessionProvider
+        ? (providerStatuses.find((status) => status.provider === activeSessionProvider) ?? null)
+        : null,
+    [activeSessionProvider, providerStatuses],
+  );
   const activeSessionLastError = activeThread?.session?.lastError ?? null;
+  const selectedProviderHasRecoveredAuth = activeProviderStatus?.authStatus === "authenticated";
+  const selectedProviderSessionAuthError =
+    activeSessionProvider === selectedProvider &&
+    isLikelyProviderAuthError(activeSessionLastError, activeSessionProvider);
   const shouldPromptForAuth =
-    activeProviderStatus?.authStatus === "unauthenticated" ||
-    isLikelyAuthErrorMessage(activeSessionLastError);
+    !selectedProviderHasRecoveredAuth &&
+    (activeProviderStatus?.authStatus === "unauthenticated" || selectedProviderSessionAuthError);
   const authPromptProviderLabel = providerLabel(selectedProvider);
+  const authPromptSessionLastError =
+    activeSessionProvider === selectedProvider ? activeSessionLastError : null;
   const authPromptDetail = normalizeAuthPromptDetail({
     provider: selectedProvider,
     statusMessage: activeProviderStatus?.message,
-    sessionLastError: activeSessionLastError,
+    sessionLastError: authPromptSessionLastError,
   });
   const authPromptHelpMessage = authHelpMessageForProvider(selectedProvider);
-  const authPromptKey = `${selectedProvider}:${activeProviderStatus?.authStatus ?? "unknown"}:${activeProviderStatus?.checkedAt ?? ""}:${activeSessionLastError ?? ""}`;
+  const authPromptIssueKey = `${selectedProvider}:${activeProviderStatus?.authStatus ?? "unknown"}:${authPromptDetail ?? ""}`;
+  const displayedThreadError =
+    activeSessionProviderStatus?.authStatus === "authenticated" &&
+    isLikelyProviderAuthError(activeThread?.error, activeSessionProvider)
+      ? null
+      : (activeThread?.error ?? null);
+  const handleAuthPromptOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen) {
+        dismissedAuthPromptKeyRef.current = authPromptIssueKey;
+      }
+      setAuthPromptOpen(nextOpen);
+    },
+    [authPromptIssueKey],
+  );
   useEffect(() => {
     if (!shouldPromptForAuth) {
       setAuthPromptOpen(false);
       authPromptKeyRef.current = null;
+      dismissedAuthPromptKeyRef.current = null;
       return;
     }
-    if (authPromptKeyRef.current === authPromptKey) {
+    if (
+      authPromptKeyRef.current === authPromptIssueKey ||
+      dismissedAuthPromptKeyRef.current === authPromptIssueKey
+    ) {
       return;
     }
-    authPromptKeyRef.current = authPromptKey;
+    authPromptKeyRef.current = authPromptIssueKey;
     setAuthPromptOpen(true);
-  }, [authPromptKey, shouldPromptForAuth]);
+  }, [authPromptIssueKey, shouldPromptForAuth]);
+  useEffect(() => {
+    if (!shouldPromptForAuth) {
+      authStatusRefreshKeyRef.current = null;
+      return;
+    }
+    if (authStatusRefreshKeyRef.current === authPromptIssueKey) {
+      return;
+    }
+    authStatusRefreshKeyRef.current = authPromptIssueKey;
+    void serverConfigQuery.refetch();
+  }, [authPromptIssueKey, serverConfigQuery, shouldPromptForAuth]);
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const threadTerminalRuntimeEnv = useMemo(() => {
@@ -3623,7 +3655,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         />
       </header>
 
-      <Dialog open={authPromptOpen} onOpenChange={setAuthPromptOpen}>
+      <Dialog open={authPromptOpen} onOpenChange={handleAuthPromptOpenChange}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{authPromptProviderLabel} Login Required</DialogTitle>
@@ -3636,12 +3668,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
             {authPromptDetail ? <p className="mt-2 line-clamp-4">{authPromptDetail}</p> : null}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAuthPromptOpen(false)}>
+            <Button variant="outline" onClick={() => handleAuthPromptOpenChange(false)}>
               Dismiss
             </Button>
             <Button
               onClick={() => {
-                setAuthPromptOpen(false);
+                handleAuthPromptOpenChange(false);
                 void navigate({ to: "/settings" });
               }}
             >
@@ -3654,7 +3686,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       {/* Error banner */}
       <ProviderHealthBanner status={activeProviderStatus} />
       <ThreadErrorBanner
-        error={activeThread.error}
+        error={displayedThreadError}
         onDismiss={() => setThreadError(activeThread.id, null)}
       />
       {/* Main content area with optional plan sidebar */}
