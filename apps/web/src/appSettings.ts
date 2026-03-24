@@ -5,6 +5,7 @@ import {
   type ProviderKind,
   type ProviderModelOption,
   type ProviderModelOptionsByProvider,
+  type ProviderStartOptions,
 } from "@k1tools/contracts";
 import {
   formatModelDisplayName,
@@ -69,6 +70,7 @@ const withDefaults =
     );
 
 export const AppSettingsSchema = Schema.Struct({
+  claudeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   geminiBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   cursorBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -335,6 +337,59 @@ export function getCustomModelOptionsByProvider(
       discoveredModelsByProvider?.openCode,
     ),
   };
+}
+
+export function getProviderStartOptions(
+  settings: Pick<
+    AppSettings,
+    | "claudeBinaryPath"
+    | "codexBinaryPath"
+    | "codexHomePath"
+    | "geminiBinaryPath"
+    | "cursorBinaryPath"
+    | "openCodeBinaryPath"
+  >,
+): ProviderStartOptions | undefined {
+  const providerOptions: ProviderStartOptions = {
+    ...(settings.codexBinaryPath || settings.codexHomePath
+      ? {
+          codex: {
+            ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
+            ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+          },
+        }
+      : {}),
+    ...(settings.claudeBinaryPath
+      ? {
+          claudeAgent: {
+            binaryPath: settings.claudeBinaryPath,
+          },
+        }
+      : {}),
+    ...(settings.geminiBinaryPath
+      ? {
+          gemini: {
+            binaryPath: settings.geminiBinaryPath,
+          },
+        }
+      : {}),
+    ...(settings.cursorBinaryPath
+      ? {
+          cursor: {
+            binaryPath: settings.cursorBinaryPath,
+          },
+        }
+      : {}),
+    ...(settings.openCodeBinaryPath
+      ? {
+          openCode: {
+            binaryPath: settings.openCodeBinaryPath,
+          },
+        }
+      : {}),
+  };
+
+  return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
 }
 
 export function useAppSettings() {

@@ -135,6 +135,7 @@ import { readNativeApi } from "~/nativeApi";
 import {
   getCustomModelOptionsByProvider,
   getCustomModelsByProvider,
+  getProviderStartOptions,
   resolveAppModelSelection,
   useAppSettings,
 } from "../appSettings";
@@ -788,54 +789,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  const providerOptionsForDispatch = useMemo(() => {
-    if (
-      !settings.codexBinaryPath &&
-      !settings.codexHomePath &&
-      !settings.geminiBinaryPath &&
-      !settings.cursorBinaryPath &&
-      !settings.openCodeBinaryPath
-    ) {
-      return undefined;
-    }
-    return {
-      ...(settings.codexBinaryPath || settings.codexHomePath
-        ? {
-            codex: {
-              ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-              ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-            },
-          }
-        : {}),
-      ...(settings.geminiBinaryPath
-        ? {
-            gemini: {
-              binaryPath: settings.geminiBinaryPath,
-            },
-          }
-        : {}),
-      ...(settings.cursorBinaryPath
-        ? {
-            cursor: {
-              binaryPath: settings.cursorBinaryPath,
-            },
-          }
-        : {}),
-      ...(settings.openCodeBinaryPath
-        ? {
-            openCode: {
-              binaryPath: settings.openCodeBinaryPath,
-            },
-          }
-        : {}),
-    };
-  }, [
-    settings.codexBinaryPath,
-    settings.codexHomePath,
-    settings.geminiBinaryPath,
-    settings.cursorBinaryPath,
-    settings.openCodeBinaryPath,
-  ]);
+  const providerOptionsForDispatch = useMemo(() => getProviderStartOptions(settings), [settings]);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings, providerModelsQuery.data),

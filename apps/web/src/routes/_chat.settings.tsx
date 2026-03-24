@@ -100,6 +100,7 @@ function SettingsRouteView() {
     Partial<Record<ProviderKind, string | null>>
   >({});
 
+  const claudeBinaryPath = settings.claudeBinaryPath;
   const codexBinaryPath = settings.codexBinaryPath;
   const geminiBinaryPath = settings.geminiBinaryPath;
   const cursorBinaryPath = settings.cursorBinaryPath;
@@ -449,7 +450,7 @@ function SettingsRouteView() {
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Codex App Server</h2>
+                <h2 className="text-sm font-medium text-foreground">Provider binaries</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   These overrides apply to new sessions and let you choose non-default provider
                   binaries.
@@ -482,6 +483,20 @@ function SettingsRouteView() {
                   />
                   <span className="text-xs text-muted-foreground">
                     Optional custom Codex home/config directory.
+                  </span>
+                </label>
+
+                <label htmlFor="claude-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Claude binary path</span>
+                  <Input
+                    id="claude-binary-path"
+                    value={claudeBinaryPath}
+                    onChange={(event) => updateSettings({ claudeBinaryPath: event.target.value })}
+                    placeholder="claude"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>claude</code> from your PATH.
                   </span>
                 </label>
 
@@ -533,6 +548,10 @@ function SettingsRouteView() {
                     <p className="mt-1 break-all text-[11px] text-foreground">
                       {codexBinaryPath || "PATH"}
                     </p>
+                    <p className="mt-3">Claude binary source</p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {claudeBinaryPath || "PATH"}
+                    </p>
                     <p className="mt-3">Gemini binary source</p>
                     <p className="mt-1 break-all font-mono text-[11px] text-foreground">
                       {geminiBinaryPath || "PATH"}
@@ -552,6 +571,7 @@ function SettingsRouteView() {
                     className="self-start"
                     onClick={() =>
                       updateSettings({
+                        claudeBinaryPath: defaults.claudeBinaryPath,
                         codexBinaryPath: defaults.codexBinaryPath,
                         geminiBinaryPath: defaults.geminiBinaryPath,
                         cursorBinaryPath: defaults.cursorBinaryPath,

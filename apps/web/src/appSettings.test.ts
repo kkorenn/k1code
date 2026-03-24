@@ -11,6 +11,7 @@ import {
   getCustomModelsByProvider,
   getCustomModelsForProvider,
   getDefaultCustomModelsForProvider,
+  getProviderStartOptions,
   MODEL_PROVIDER_SETTINGS,
   normalizeCustomModelSlugs,
   patchCustomModels,
@@ -155,6 +156,47 @@ describe("provider-specific custom models", () => {
     const claudeOptions = getAppModelOptions("claudeAgent", ["claude/custom-opus"]);
 
     expect(claudeOptions.some((option) => option.slug === "claude/custom-opus")).toBe(true);
+  });
+});
+
+describe("getProviderStartOptions", () => {
+  it("returns only populated provider overrides", () => {
+    expect(
+      getProviderStartOptions({
+        claudeBinaryPath: "/usr/local/bin/claude",
+        codexBinaryPath: "",
+        codexHomePath: "/Users/you/.codex",
+        geminiBinaryPath: "/usr/local/bin/gemini",
+        cursorBinaryPath: "",
+        openCodeBinaryPath: "/usr/local/bin/opencode",
+      }),
+    ).toEqual({
+      claudeAgent: {
+        binaryPath: "/usr/local/bin/claude",
+      },
+      codex: {
+        homePath: "/Users/you/.codex",
+      },
+      gemini: {
+        binaryPath: "/usr/local/bin/gemini",
+      },
+      openCode: {
+        binaryPath: "/usr/local/bin/opencode",
+      },
+    });
+  });
+
+  it("returns undefined when no provider overrides are configured", () => {
+    expect(
+      getProviderStartOptions({
+        claudeBinaryPath: "",
+        codexBinaryPath: "",
+        codexHomePath: "",
+        geminiBinaryPath: "",
+        cursorBinaryPath: "",
+        openCodeBinaryPath: "",
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -317,6 +359,7 @@ describe("AppSettingsSchema", () => {
         }),
       ),
     ).toMatchObject({
+      claudeBinaryPath: "",
       codexBinaryPath: "/usr/local/bin/codex",
       geminiBinaryPath: "",
       cursorBinaryPath: "",
