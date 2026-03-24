@@ -322,6 +322,7 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
         })),
         error: normalizedSessionError,
         createdAt: thread.createdAt,
+        archivedAt: thread.archivedAt,
         latestTurn: thread.latestTurn,
         lastVisitedAt: existing?.lastVisitedAt ?? thread.updatedAt,
         branch: thread.branch,

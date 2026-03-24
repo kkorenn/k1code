@@ -1,5 +1,4 @@
 import {
-  ArrowLeftIcon,
   ChevronRightIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -36,7 +35,7 @@ import {
   type GitStatusResult,
   type ResolvedKeybindingsConfig,
 } from "@k1tools/contracts";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
@@ -45,13 +44,15 @@ import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../l
 import { useStore } from "../store";
 import { shortcutLabelForCommand } from "../keybindings";
 import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
-import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
+import { gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useThreadActions } from "../hooks/useThreadActions";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { toastManager } from "./ui/toast";
+import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -94,7 +95,6 @@ import {
   SidebarTrigger,
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
-import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
   resolveProjectStatusIndicator,
@@ -268,17 +268,15 @@ export default function Sidebar() {
     (store) => store.getDraftThreadByProjectId,
   );
   const terminalStateByThreadId = useTerminalStateStore((state) => state.terminalStateByThreadId);
-  const clearTerminalState = useTerminalStateStore((state) => state.clearTerminalState);
   const clearProjectDraftThreadId = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadId,
   );
-  const clearProjectDraftThreadById = useComposerDraftStore(
-    (store) => store.clearProjectDraftThreadById,
-  );
   const navigate = useNavigate();
-  const isOnSettings = useLocation({ select: (loc) => loc.pathname === "/settings" });
+  const pathname = useLocation({ select: (loc) => loc.pathname });
+  const isOnSettings = pathname.startsWith("/settings");
   const { settings: appSettings, updateSettings } = useAppSettings();
   const { handleNewThread } = useHandleNewThread();
+  const { archiveThread, deleteThread, confirmAndDeleteThread } = useThreadActions();
   const routeThreadId = useParams({
     strict: false,
     select: (params) => (params.threadId ? ThreadId.makeUnsafe(params.threadId) : null),
@@ -287,8 +285,6 @@ export default function Sidebar() {
     ...serverConfigQueryOptions(),
     select: (config) => config.keybindings,
   });
-  const queryClient = useQueryClient();
-  const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const [addingProject, setAddingProject] = useState(false);
   const [isAddProjectMenuOpen, setIsAddProjectMenuOpen] = useState(false);
   const [newCwd, setNewCwd] = useState("");
@@ -697,118 +693,6 @@ export default function Sidebar() {
    * clean up drafts/state, and optionally remove orphaned worktree.
    * Callers handle thread-level confirmation; this still prompts for worktree removal.
    */
-  const deleteThread = useCallback(
-    async (
-      threadId: ThreadId,
-      opts: { deletedThreadIds?: ReadonlySet<ThreadId> } = {},
-    ): Promise<void> => {
-      const api = readNativeApi();
-      if (!api) return;
-      const thread = threads.find((t) => t.id === threadId);
-      if (!thread) return;
-      const threadProject = projects.find((project) => project.id === thread.projectId);
-      // When bulk-deleting, exclude the other threads being deleted so
-      // getOrphanedWorktreePathForThread correctly detects that no surviving
-      // threads will reference this worktree.
-      const deletedIds = opts.deletedThreadIds;
-      const survivingThreads =
-        deletedIds && deletedIds.size > 0
-          ? threads.filter((t) => t.id === threadId || !deletedIds.has(t.id))
-          : threads;
-      const orphanedWorktreePath = getOrphanedWorktreePathForThread(survivingThreads, threadId);
-      const displayWorktreePath = orphanedWorktreePath
-        ? formatWorktreePathForDisplay(orphanedWorktreePath)
-        : null;
-      const canDeleteWorktree = orphanedWorktreePath !== null && threadProject !== undefined;
-      const shouldDeleteWorktree =
-        canDeleteWorktree &&
-        (await api.dialogs.confirm(
-          [
-            "This thread is the only one linked to this worktree:",
-            displayWorktreePath ?? orphanedWorktreePath,
-            "",
-            "Delete the worktree too?",
-          ].join("\n"),
-        ));
-
-      if (thread.session && thread.session.status !== "closed") {
-        await api.orchestration
-          .dispatchCommand({
-            type: "thread.session.stop",
-            commandId: newCommandId(),
-            threadId,
-            createdAt: new Date().toISOString(),
-          })
-          .catch(() => undefined);
-      }
-
-      try {
-        await api.terminal.close({ threadId, deleteHistory: true });
-      } catch {
-        // Terminal may already be closed
-      }
-
-      const allDeletedIds = deletedIds ?? new Set<ThreadId>();
-      const shouldNavigateToFallback = routeThreadId === threadId;
-      const fallbackThreadId =
-        threads.find((entry) => entry.id !== threadId && !allDeletedIds.has(entry.id))?.id ?? null;
-      await api.orchestration.dispatchCommand({
-        type: "thread.delete",
-        commandId: newCommandId(),
-        threadId,
-      });
-      clearComposerDraftForThread(threadId);
-      clearProjectDraftThreadById(thread.projectId, thread.id);
-      clearTerminalState(threadId);
-      if (shouldNavigateToFallback) {
-        if (fallbackThreadId) {
-          void navigate({
-            to: "/$threadId",
-            params: { threadId: fallbackThreadId },
-            replace: true,
-          });
-        } else {
-          void navigate({ to: "/", replace: true });
-        }
-      }
-
-      if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
-        return;
-      }
-
-      try {
-        await removeWorktreeMutation.mutateAsync({
-          cwd: threadProject.cwd,
-          path: orphanedWorktreePath,
-          force: true,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error removing worktree.";
-        console.error("Failed to remove orphaned worktree after thread deletion", {
-          threadId,
-          projectCwd: threadProject.cwd,
-          worktreePath: orphanedWorktreePath,
-          error,
-        });
-        toastManager.add({
-          type: "error",
-          title: "Thread deleted, but worktree removal failed",
-          description: `Could not remove ${displayWorktreePath ?? orphanedWorktreePath}. ${message}`,
-        });
-      }
-    },
-    [
-      clearComposerDraftForThread,
-      clearProjectDraftThreadById,
-      clearTerminalState,
-      navigate,
-      projects,
-      removeWorktreeMutation,
-      routeThreadId,
-      threads,
-    ],
-  );
-
   const { copyToClipboard: copyThreadIdToClipboard } = useCopyToClipboard<{ threadId: ThreadId }>({
     onCopy: (ctx) => {
       toastManager.add({
@@ -853,6 +737,7 @@ export default function Sidebar() {
         [
           { id: "rename", label: "Rename thread" },
           { id: "mark-unread", label: "Mark unread" },
+          { id: "archive", label: "Archive" },
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "delete", label: "Delete", destructive: true },
@@ -869,6 +754,18 @@ export default function Sidebar() {
 
       if (clicked === "mark-unread") {
         markThreadUnread(threadId);
+        return;
+      }
+      if (clicked === "archive") {
+        try {
+          await archiveThread(threadId);
+        } catch (error) {
+          toastManager.add({
+            type: "error",
+            title: "Failed to archive thread",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          });
+        }
         return;
       }
       if (clicked === "copy-path") {
@@ -888,24 +785,13 @@ export default function Sidebar() {
         return;
       }
       if (clicked !== "delete") return;
-      if (appSettings.confirmThreadDelete) {
-        const confirmed = await api.dialogs.confirm(
-          [
-            `Delete thread "${thread.title}"?`,
-            "This permanently clears conversation history for this thread.",
-          ].join("\n"),
-        );
-        if (!confirmed) {
-          return;
-        }
-      }
-      await deleteThread(threadId);
+      await confirmAndDeleteThread(threadId);
     },
     [
-      appSettings.confirmThreadDelete,
+      archiveThread,
+      confirmAndDeleteThread,
       copyPathToClipboard,
       copyThreadIdToClipboard,
-      deleteThread,
       markThreadUnread,
       projectCwdById,
       threads,
@@ -1313,6 +1199,23 @@ export default function Sidebar() {
     </div>
   );
 
+  if (isOnSettings) {
+    return (
+      <>
+        {isElectron ? (
+          <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 pl-[90px]">
+            {wordmark}
+          </SidebarHeader>
+        ) : (
+          <SidebarHeader className="gap-3 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-3">
+            {wordmark}
+          </SidebarHeader>
+        )}
+        <SettingsSidebarNav pathname={pathname} />
+      </>
+    );
+  }
+
   return (
     <>
       {isElectron ? (
@@ -1512,7 +1415,9 @@ export default function Sidebar() {
               >
                 {projects.map((project) => {
                   const projectThreads = threads
-                    .filter((thread) => thread.projectId === project.id)
+                    .filter(
+                      (thread) => thread.projectId === project.id && thread.archivedAt === null,
+                    )
                     .toSorted((a, b) => {
                       const byDate =
                         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -1856,25 +1761,14 @@ export default function Sidebar() {
       <SidebarFooter className="p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            {isOnSettings ? (
-              <SidebarMenuButton
-                size="sm"
-                className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                onClick={() => window.history.back()}
-              >
-                <ArrowLeftIcon className="size-3.5" />
-                <span className="text-xs">Back</span>
-              </SidebarMenuButton>
-            ) : (
-              <SidebarMenuButton
-                size="sm"
-                className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-                onClick={() => void navigate({ to: "/settings" })}
-              >
-                <SettingsIcon className="size-3.5" />
-                <span className="text-xs">Settings</span>
-              </SidebarMenuButton>
-            )}
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              onClick={() => void navigate({ to: "/settings" })}
+            >
+              <SettingsIcon className="size-3.5" />
+              <span className="text-xs">Settings</span>
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

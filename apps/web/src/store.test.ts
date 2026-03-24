@@ -26,6 +26,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     proposedPlans: [],
     error: null,
     createdAt: "2026-02-13T00:00:00.000Z",
+    archivedAt: null,
     latestTurn: null,
     branch: null,
     worktreePath: null,
@@ -63,6 +64,7 @@ function makeReadModelThread(overrides: Partial<OrchestrationReadModel["threads"
     latestTurn: null,
     createdAt: "2026-02-27T00:00:00.000Z",
     updatedAt: "2026-02-27T00:00:00.000Z",
+    archivedAt: null,
     deletedAt: null,
     messages: [],
     activities: [],
@@ -224,6 +226,21 @@ describe("store read model sync", () => {
     const next = syncServerReadModel(initialState, readModel);
 
     expect(next.threads[0]?.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("maps archivedAt from the read model", () => {
+    const initialState = makeState(makeThread());
+    const archivedAt = "2026-02-28T00:00:00.000Z";
+    const next = syncServerReadModel(
+      initialState,
+      makeReadModel(
+        makeReadModelThread({
+          archivedAt,
+        }),
+      ),
+    );
+
+    expect(next.threads[0]?.archivedAt).toBe(archivedAt);
   });
 
   it("preserves the current project order when syncing incoming read model updates", () => {
