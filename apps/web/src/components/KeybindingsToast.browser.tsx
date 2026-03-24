@@ -132,7 +132,7 @@ function resolveWsRpc(tag: string): unknown {
     return fixture.snapshot;
   }
   if (tag === WS_METHODS.serverGetProviderModels) {
-    return { codex: [], claudeAgent: [], gemini: [] };
+    return { codex: [], claudeAgent: [], gemini: [], cursor: [], openCode: [] };
   }
   if (tag === WS_METHODS.serverGetConfig) {
     return fixture.serverConfig;

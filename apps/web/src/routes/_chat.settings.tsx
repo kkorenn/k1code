@@ -93,6 +93,8 @@ function SettingsRouteView() {
     codex: "",
     claudeAgent: "",
     gemini: "",
+    cursor: "",
+    openCode: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -100,6 +102,8 @@ function SettingsRouteView() {
 
   const codexBinaryPath = settings.codexBinaryPath;
   const geminiBinaryPath = settings.geminiBinaryPath;
+  const cursorBinaryPath = settings.cursorBinaryPath;
+  const openCodeBinaryPath = settings.openCodeBinaryPath;
   const codexHomePath = settings.codexHomePath;
   const newProjectBasePath = settings.newProjectBasePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
@@ -495,6 +499,34 @@ function SettingsRouteView() {
                   </span>
                 </label>
 
+                <label htmlFor="cursor-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Cursor binary path</span>
+                  <Input
+                    id="cursor-binary-path"
+                    value={cursorBinaryPath}
+                    onChange={(event) => updateSettings({ cursorBinaryPath: event.target.value })}
+                    placeholder="cursor-agent"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>cursor-agent</code> from your PATH.
+                  </span>
+                </label>
+
+                <label htmlFor="opencode-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">OpenCode binary path</span>
+                  <Input
+                    id="opencode-binary-path"
+                    value={openCodeBinaryPath}
+                    onChange={(event) => updateSettings({ openCodeBinaryPath: event.target.value })}
+                    placeholder="opencode"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>opencode</code> from your PATH.
+                  </span>
+                </label>
+
                 <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <p>Binary source</p>
@@ -505,6 +537,14 @@ function SettingsRouteView() {
                     <p className="mt-1 break-all font-mono text-[11px] text-foreground">
                       {geminiBinaryPath || "PATH"}
                     </p>
+                    <p className="mt-3">Cursor binary source</p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {cursorBinaryPath || "PATH"}
+                    </p>
+                    <p className="mt-3">OpenCode binary source</p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {openCodeBinaryPath || "PATH"}
+                    </p>
                   </div>
                   <Button
                     size="xs"
@@ -514,6 +554,8 @@ function SettingsRouteView() {
                       updateSettings({
                         codexBinaryPath: defaults.codexBinaryPath,
                         geminiBinaryPath: defaults.geminiBinaryPath,
+                        cursorBinaryPath: defaults.cursorBinaryPath,
+                        openCodeBinaryPath: defaults.openCodeBinaryPath,
                         codexHomePath: defaults.codexHomePath,
                       })
                     }
@@ -808,9 +850,7 @@ function SettingsRouteView() {
 
               <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground">
-                    Text generation model
-                  </p>
+                  <p className="text-sm font-medium text-foreground">Text generation model</p>
                   <p className="text-xs text-muted-foreground">
                     Provider and model used for auto-generated git content.
                   </p>
@@ -829,8 +869,8 @@ function SettingsRouteView() {
                 />
               </div>
 
-              {(settings.textGenerationModel !== defaults.textGenerationModel ||
-                settings.textGenerationProvider !== defaults.textGenerationProvider) ? (
+              {settings.textGenerationModel !== defaults.textGenerationModel ||
+              settings.textGenerationProvider !== defaults.textGenerationProvider ? (
                 <div className="mt-3 flex justify-end">
                   <Button
                     size="xs"

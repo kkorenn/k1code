@@ -37,6 +37,8 @@ describe("formatModelDisplayName", () => {
     expect(formatModelDisplayName("gpt-5.4-mini")).toBe("GPT 5.4 Mini");
     expect(formatModelDisplayName("claude-sonnet-4-6")).toBe("Claude Sonnet 4.6");
     expect(formatModelDisplayName("gemini-2.5-flash")).toBe("Gemini 2.5 Flash");
+    expect(formatModelDisplayName("openai/gpt-5.4")).toBe("OpenAI GPT 5.4");
+    expect(formatModelDisplayName("opencode/big-pickle")).toBe("OpenCode Big Pickle");
   });
 
   it("keeps non-standard custom model strings unchanged", () => {

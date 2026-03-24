@@ -892,6 +892,16 @@ describe("composerDraftStore runtime and interaction settings", () => {
     );
   });
 
+  it("stores workspace access runtime mode overrides in the composer draft", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setRuntimeMode(threadId, "workspace-write");
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]?.runtimeMode).toBe(
+      "workspace-write",
+    );
+  });
+
   it("stores interaction mode overrides in the composer draft", () => {
     const store = useComposerDraftStore.getState();
 

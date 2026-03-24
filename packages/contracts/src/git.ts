@@ -66,9 +66,13 @@ export const GitRunStackedActionInput = Schema.Struct({
     Schema.Array(TrimmedNonEmptyStringSchema).check(Schema.isMinLength(1)),
   ),
   textGenerationModel: Schema.optional(TrimmedNonEmptyStringSchema).pipe(
-    Schema.withConstructorDefault(() => Option.some(DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex)),
+    Schema.withConstructorDefault(() =>
+      Option.some(DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex),
+    ),
   ),
-  textGenerationProvider: Schema.optional(Schema.Literals(["codex", "claudeAgent"])),
+  textGenerationProvider: Schema.optional(
+    Schema.Literals(["codex", "claudeAgent", "gemini", "cursor", "openCode"]),
+  ),
 });
 export type GitRunStackedActionInput = typeof GitRunStackedActionInput.Type;
 

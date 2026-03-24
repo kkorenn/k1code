@@ -1,10 +1,10 @@
 /**
- * GeminiAdapterLive - Scoped live implementation for the Gemini provider adapter.
+ * CursorAdapterLive - Scoped live implementation for the Cursor provider adapter.
  *
- * Runs Gemini CLI in headless mode per turn and projects outputs into canonical
- * provider runtime events consumed by orchestration.
+ * Runs Cursor Agent CLI in non-interactive mode per turn and projects outputs
+ * into canonical provider runtime events consumed by orchestration.
  *
- * @module GeminiAdapterLive
+ * @module CursorAdapterLive
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -29,18 +29,18 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
-import { GeminiAdapter, type GeminiAdapterShape } from "../Services/GeminiAdapter.ts";
+import { CursorAdapter, type CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
-const PROVIDER = "gemini" as const;
-const DEFAULT_GEMINI_BINARY_PATH = "gemini";
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-pro";
+const PROVIDER = "cursor" as const;
+const DEFAULT_CURSOR_BINARY_PATH = "cursor-agent";
+const DEFAULT_CURSOR_MODEL = "gpt-5";
 const MAX_HISTORY_TURNS = 24;
 const MAX_HISTORY_CHARS = 18_000;
-const GEMINI_AUTH_REQUIRED_MESSAGE =
-  'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.';
+const CURSOR_AUTH_REQUIRED_MESSAGE =
+  "Cursor is not authenticated. Run `cursor-agent login` and try again.";
 
-interface GeminiTurnRecord {
+interface CursorTurnRecord {
   readonly id: TurnId;
   readonly prompt: string;
   readonly response: string;
@@ -48,7 +48,7 @@ interface GeminiTurnRecord {
   readonly items: ReadonlyArray<unknown>;
 }
 
-interface GeminiRunningTurn {
+interface CursorRunningTurn {
   readonly turnId: TurnId;
   readonly interactionMode: "default" | "plan";
   readonly itemId: RuntimeItemId;
@@ -56,14 +56,14 @@ interface GeminiRunningTurn {
   interrupted: boolean;
 }
 
-interface GeminiSessionContext {
+interface CursorSessionContext {
   session: ProviderSession;
   binaryPath: string;
-  turns: GeminiTurnRecord[];
-  runningTurn: GeminiRunningTurn | null;
+  turns: CursorTurnRecord[];
+  runningTurn: CursorRunningTurn | null;
 }
 
-export interface GeminiAdapterLiveOptions {
+export interface CursorAdapterLiveOptions {
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
 }
@@ -113,7 +113,7 @@ function makeRuntimeEventBase(input: {
   } as const;
 }
 
-function parseGeminiOutput(input: { readonly stdout: string; readonly stderr: string }): {
+function parseCursorOutput(input: { readonly stdout: string; readonly stderr: string }): {
   readonly response: string;
   readonly error?: string;
 } {
@@ -126,9 +126,15 @@ function parseGeminiOutput(input: { readonly stdout: string; readonly stderr: st
     try {
       const parsed = JSON.parse(stdoutTrimmed) as {
         response?: unknown;
+        text?: unknown;
         error?: { message?: unknown } | unknown;
       };
-      const response = typeof parsed.response === "string" ? parsed.response.trim() : "";
+      const response =
+        typeof parsed.response === "string"
+          ? parsed.response.trim()
+          : typeof parsed.text === "string"
+            ? parsed.text.trim()
+            : "";
       const errorMessage =
         parsed.error && typeof parsed.error === "object" && parsed.error !== null
           ? typeof (parsed.error as { message?: unknown }).message === "string"
@@ -151,7 +157,7 @@ function parseGeminiOutput(input: { readonly stdout: string; readonly stderr: st
   return { response: stdoutTrimmed };
 }
 
-function extractGeminiStructuredErrorMessage(raw: string): string | undefined {
+function extractCursorStructuredErrorMessage(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) {
     return undefined;
@@ -187,18 +193,18 @@ function extractGeminiStructuredErrorMessage(raw: string): string | undefined {
   return undefined;
 }
 
-function normalizeGeminiFailureMessage(raw: string): string {
-  const structuredMessage = extractGeminiStructuredErrorMessage(raw);
+function normalizeCursorFailureMessage(raw: string): string {
+  const structuredMessage = extractCursorStructuredErrorMessage(raw);
   const message = (structuredMessage ?? raw).trim();
   const lower = message.toLowerCase();
   if (
-    lower.includes("please set an auth method") ||
-    lower.includes("/.gemini/settings.json") ||
+    lower.includes("not authenticated") ||
     lower.includes("not logged in") ||
-    lower.includes("please run /login") ||
-    lower.includes("authentication required")
+    lower.includes("authentication required") ||
+    lower.includes("run `cursor-agent login`") ||
+    lower.includes("run cursor-agent login")
   ) {
-    return GEMINI_AUTH_REQUIRED_MESSAGE;
+    return CURSOR_AUTH_REQUIRED_MESSAGE;
   }
   return message;
 }
@@ -231,7 +237,7 @@ function buildAttachmentContext(input: {
 }
 
 function buildPromptWithHistory(input: {
-  readonly turns: ReadonlyArray<GeminiTurnRecord>;
+  readonly turns: ReadonlyArray<CursorTurnRecord>;
   readonly prompt: string;
   readonly attachmentContext: string;
   readonly interactionMode: "default" | "plan";
@@ -259,14 +265,14 @@ function buildPromptWithHistory(input: {
   return parts.join("\n\n");
 }
 
-function createGeminiTurnItems(prompt: string, response: string): ReadonlyArray<unknown> {
+function createCursorTurnItems(prompt: string, response: string): ReadonlyArray<unknown> {
   return [
     { role: "user", content: [{ type: "text", text: prompt }] },
     { role: "assistant", content: [{ type: "text", text: response }] },
   ];
 }
 
-const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
+const makeCursorAdapter = (options?: CursorAdapterLiveOptions) =>
   Effect.gen(function* () {
     const serverConfig = yield* Effect.service(ServerConfig);
     const nativeEventLogger =
@@ -278,7 +284,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         : undefined);
 
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-    const sessions = new Map<ThreadId, GeminiSessionContext>();
+    const sessions = new Map<ThreadId, CursorSessionContext>();
 
     const emitRuntimeEvent = (event: ProviderRuntimeEvent) =>
       Queue.offer(runtimeEventQueue, event).pipe(Effect.asVoid);
@@ -288,28 +294,28 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
 
     const getSessionContext = (
       threadId: ThreadId,
-    ): Effect.Effect<GeminiSessionContext, ProviderAdapterSessionNotFoundError> => {
+    ): Effect.Effect<CursorSessionContext, ProviderAdapterSessionNotFoundError> => {
       const session = sessions.get(threadId);
       return session ? Effect.succeed(session) : Effect.fail(toSessionNotFound(threadId));
     };
 
-    const startSession: GeminiAdapterShape["startSession"] = (input) =>
+    const startSession: CursorAdapterShape["startSession"] = (input) =>
       Effect.gen(function* () {
         if (input.provider !== undefined && input.provider !== PROVIDER) {
           return yield* new ProviderAdapterValidationError({
             provider: PROVIDER,
-            operation: "GeminiAdapter.startSession",
+            operation: "CursorAdapter.startSession",
             issue: `Expected provider '${PROVIDER}' but received '${String(input.provider)}'.`,
           });
         }
 
         const existing = sessions.get(input.threadId);
         const binaryPath =
-          input.providerOptions?.gemini?.binaryPath?.trim() ||
+          input.providerOptions?.cursor?.binaryPath?.trim() ||
           existing?.binaryPath ||
-          DEFAULT_GEMINI_BINARY_PATH;
+          DEFAULT_CURSOR_BINARY_PATH;
         const now = nowIso();
-        const model = input.model?.trim() || existing?.session.model || DEFAULT_GEMINI_MODEL;
+        const model = input.model?.trim() || existing?.session.model || DEFAULT_CURSOR_MODEL;
 
         const session: ProviderSession = {
           provider: PROVIDER,
@@ -322,7 +328,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           updatedAt: now,
         };
 
-        const nextContext: GeminiSessionContext = {
+        const nextContext: CursorSessionContext = {
           session,
           binaryPath,
           turns: existing?.turns ?? [],
@@ -332,7 +338,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
 
         yield* logNativeEvent(
           {
-            type: "gemini.session.started",
+            type: "cursor.session.started",
             threadId: input.threadId,
             runtimeMode: input.runtimeMode,
             model,
@@ -345,7 +351,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           type: "session.started",
           ...makeRuntimeEventBase({ threadId: input.threadId }),
           payload: {
-            message: "Gemini session started",
+            message: "Cursor session started",
           },
         });
         yield* emitRuntimeEvent({
@@ -366,13 +372,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         return session;
       });
 
-    const executeGeminiTurnCommand = (input: {
+    const executeCursorTurnCommand = (input: {
       readonly threadId: ThreadId;
       readonly turnId: TurnId;
       readonly binaryPath: string;
       readonly args: ReadonlyArray<string>;
       readonly cwd: string;
-      readonly runningTurn: GeminiRunningTurn;
+      readonly runningTurn: CursorRunningTurn;
     }): Effect.Effect<
       {
         readonly code: number | null;
@@ -422,8 +428,8 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
                 reject(
                   new ProviderAdapterRequestError({
                     provider: PROVIDER,
-                    method: "GeminiAdapter.sendTurn",
-                    detail: toMessage(error, "Failed to spawn Gemini CLI process."),
+                    method: "CursorAdapter.sendTurn",
+                    detail: toMessage(error, "Failed to spawn Cursor CLI process."),
                     cause: error,
                   }),
                 );
@@ -444,14 +450,14 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         catch: (cause) =>
           new ProviderAdapterRequestError({
             provider: PROVIDER,
-            method: "GeminiAdapter.sendTurn",
-            detail: toMessage(cause, "Failed to run Gemini CLI command."),
+            method: "CursorAdapter.sendTurn",
+            detail: toMessage(cause, "Failed to run Cursor CLI command."),
             cause,
           }),
       });
 
     const runTurn = (input: {
-      readonly context: GeminiSessionContext;
+      readonly context: CursorSessionContext;
       readonly turnInput: ProviderSendTurnInput;
       readonly turnId: TurnId;
       readonly itemId: RuntimeItemId;
@@ -474,21 +480,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             interactionMode,
           });
           const model =
-            input.turnInput.model?.trim() || input.context.session.model || DEFAULT_GEMINI_MODEL;
+            input.turnInput.model?.trim() || input.context.session.model || DEFAULT_CURSOR_MODEL;
           const binaryPath = input.context.binaryPath;
-          const args = [
-            "--prompt",
-            prompt,
-            "--output-format",
-            "json",
-            "--model",
-            model,
-            ...(input.context.session.runtimeMode !== "approval-required" ? ["--yolo"] : []),
-          ];
+          const args = ["-p", prompt, "--force", "--output-format", "text", "--model", model];
 
           yield* logNativeEvent(
             {
-              type: "gemini.turn.command",
+              type: "cursor.turn.command",
               threadId,
               turnId: input.turnId,
               binaryPath,
@@ -502,12 +500,12 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           if (!runningTurn || runningTurn.turnId !== input.turnId) {
             return yield* new ProviderAdapterRequestError({
               provider: PROVIDER,
-              method: "GeminiAdapter.sendTurn",
-              detail: "Turn lifecycle state was lost before Gemini process startup.",
+              method: "CursorAdapter.sendTurn",
+              detail: "Turn lifecycle state was lost before Cursor process startup.",
             });
           }
 
-          const execution = yield* executeGeminiTurnCommand({
+          const execution = yield* executeCursorTurnCommand({
             threadId,
             turnId: input.turnId,
             binaryPath,
@@ -518,7 +516,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
 
           yield* logNativeEvent(
             {
-              type: "gemini.turn.result",
+              type: "cursor.turn.result",
               threadId,
               turnId: input.turnId,
               code: execution.code,
@@ -568,8 +566,8 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             const rawMessage =
               execution.stderr.trim() ||
               execution.stdout.trim() ||
-              `Gemini CLI exited with code ${execution.code ?? "unknown"}.`;
-            const message = normalizeGeminiFailureMessage(rawMessage);
+              `Cursor CLI exited with code ${execution.code ?? "unknown"}.`;
+            const message = normalizeCursorFailureMessage(rawMessage);
             yield* emitRuntimeEvent({
               type: "runtime.error",
               ...makeRuntimeEventBase({ threadId, turnId: input.turnId }),
@@ -604,12 +602,12 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             return;
           }
 
-          const parsed = parseGeminiOutput({
+          const parsed = parseCursorOutput({
             stdout: execution.stdout,
             stderr: execution.stderr,
           });
           const response = parsed.response.trim();
-          const error = parsed.error ? normalizeGeminiFailureMessage(parsed.error) : undefined;
+          const error = parsed.error ? normalizeCursorFailureMessage(parsed.error) : undefined;
           if (!response && error) {
             yield* emitRuntimeEvent({
               type: "runtime.error",
@@ -679,7 +677,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             prompt: rawPrompt,
             response,
             createdAt: finishAt,
-            items: createGeminiTurnItems(rawPrompt, response),
+            items: createCursorTurnItems(rawPrompt, response),
           });
 
           yield* emitRuntimeEvent({
@@ -709,8 +707,8 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           Effect.matchEffect({
             onFailure: (error) =>
               Effect.gen(function* () {
-                const rawMessage = toMessage(error, "Gemini turn failed.");
-                const message = normalizeGeminiFailureMessage(rawMessage);
+                const rawMessage = toMessage(error, "Cursor turn failed.");
+                const message = normalizeCursorFailureMessage(rawMessage);
                 const finishAt = nowIso();
                 yield* emitRuntimeEvent({
                   type: "runtime.error",
@@ -757,7 +755,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         ),
       );
 
-    const sendTurn: GeminiAdapterShape["sendTurn"] = (input) =>
+    const sendTurn: CursorAdapterShape["sendTurn"] = (input) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(input.threadId);
         if (context.session.status === "closed") {
@@ -766,13 +764,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         if (context.runningTurn) {
           return yield* new ProviderAdapterRequestError({
             provider: PROVIDER,
-            method: "GeminiAdapter.sendTurn",
-            detail: "A Gemini turn is already running for this thread.",
+            method: "CursorAdapter.sendTurn",
+            detail: "A Cursor turn is already running for this thread.",
           });
         }
 
-        const turnId = TurnId.makeUnsafe(`gemini-turn-${crypto.randomUUID()}`);
-        const itemId = RuntimeItemId.makeUnsafe(`gemini-item-${crypto.randomUUID()}`);
+        const turnId = TurnId.makeUnsafe(`cursor-turn-${crypto.randomUUID()}`);
+        const itemId = RuntimeItemId.makeUnsafe(`cursor-item-${crypto.randomUUID()}`);
         const startedAt = nowIso();
         context.session = {
           ...context.session,
@@ -815,7 +813,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         };
       });
 
-    const interruptTurn: GeminiAdapterShape["interruptTurn"] = (threadId, turnId) =>
+    const interruptTurn: CursorAdapterShape["interruptTurn"] = (threadId, turnId) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         const runningTurn = context.runningTurn;
@@ -831,7 +829,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         }
       });
 
-    const respondToRequest: GeminiAdapterShape["respondToRequest"] = (
+    const respondToRequest: CursorAdapterShape["respondToRequest"] = (
       threadId,
       requestId,
       decision,
@@ -839,13 +837,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
       Effect.fail(
         new ProviderAdapterRequestError({
           provider: PROVIDER,
-          method: "GeminiAdapter.respondToRequest",
-          detail: `Gemini has no pending approval request '${requestId}' for thread '${threadId}'.`,
+          method: "CursorAdapter.respondToRequest",
+          detail: `Cursor has no pending approval request '${requestId}' for thread '${threadId}'.`,
           cause: { decision },
         }),
       );
 
-    const respondToUserInput: GeminiAdapterShape["respondToUserInput"] = (
+    const respondToUserInput: CursorAdapterShape["respondToUserInput"] = (
       threadId,
       requestId,
       answers,
@@ -853,13 +851,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
       Effect.fail(
         new ProviderAdapterRequestError({
           provider: PROVIDER,
-          method: "GeminiAdapter.respondToUserInput",
-          detail: `Gemini has no pending user-input request '${requestId}' for thread '${threadId}'.`,
+          method: "CursorAdapter.respondToUserInput",
+          detail: `Cursor has no pending user-input request '${requestId}' for thread '${threadId}'.`,
           cause: { answers },
         }),
       );
 
-    const stopSession: GeminiAdapterShape["stopSession"] = (threadId) =>
+    const stopSession: CursorAdapterShape["stopSession"] = (threadId) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         context.runningTurn?.process?.kill("SIGTERM");
@@ -882,13 +880,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         });
       });
 
-    const listSessions: GeminiAdapterShape["listSessions"] = () =>
+    const listSessions: CursorAdapterShape["listSessions"] = () =>
       Effect.sync(() => Array.from(sessions.values(), (session) => session.session));
 
-    const hasSession: GeminiAdapterShape["hasSession"] = (threadId) =>
+    const hasSession: CursorAdapterShape["hasSession"] = (threadId) =>
       Effect.sync(() => sessions.has(threadId));
 
-    const readThread: GeminiAdapterShape["readThread"] = (threadId) =>
+    const readThread: CursorAdapterShape["readThread"] = (threadId) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         return {
@@ -900,14 +898,14 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         };
       });
 
-    const rollbackThread: GeminiAdapterShape["rollbackThread"] = (threadId, numTurns) =>
+    const rollbackThread: CursorAdapterShape["rollbackThread"] = (threadId, numTurns) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         if (context.runningTurn) {
           return yield* new ProviderAdapterRequestError({
             provider: PROVIDER,
-            method: "GeminiAdapter.rollbackThread",
-            detail: "Cannot roll back while a Gemini turn is running.",
+            method: "CursorAdapter.rollbackThread",
+            detail: "Cannot roll back while a Cursor turn is running.",
           });
         }
         const safeNumTurns = Math.max(0, Math.floor(numTurns));
@@ -923,7 +921,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         };
       });
 
-    const stopAll: GeminiAdapterShape["stopAll"] = () =>
+    const stopAll: CursorAdapterShape["stopAll"] = () =>
       Effect.sync(() => {
         for (const context of sessions.values()) {
           context.runningTurn?.process?.kill("SIGTERM");
@@ -952,11 +950,11 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
       rollbackThread,
       stopAll,
       streamEvents: Stream.fromQueue(runtimeEventQueue),
-    } satisfies GeminiAdapterShape;
+    } satisfies CursorAdapterShape;
   });
 
-export const GeminiAdapterLive = Layer.effect(GeminiAdapter, makeGeminiAdapter());
+export const CursorAdapterLive = Layer.effect(CursorAdapter, makeCursorAdapter());
 
-export function makeGeminiAdapterLive(options?: GeminiAdapterLiveOptions) {
-  return Layer.effect(GeminiAdapter, makeGeminiAdapter(options));
+export function makeCursorAdapterLive(options?: CursorAdapterLiveOptions) {
+  return Layer.effect(CursorAdapter, makeCursorAdapter(options));
 }

@@ -2421,7 +2421,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
               }
 
               const runtimeMode = input.runtimeMode ?? "full-access";
-              if (runtimeMode === "full-access") {
+              if (runtimeMode !== "approval-required") {
                 return {
                   behavior: "allow",
                   updatedInput: toolInput,
@@ -2558,7 +2558,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         const effectiveEffort = getEffectiveClaudeCodeEffort(effort);
         const permissionMode =
           toPermissionMode(providerOptions?.permissionMode) ??
-          (input.runtimeMode === "full-access" ? "bypassPermissions" : undefined);
+          (input.runtimeMode !== "approval-required" ? "bypassPermissions" : undefined);
         const settings = {
           ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
           ...(fastMode ? { fastMode: true } : {}),

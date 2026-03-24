@@ -373,7 +373,13 @@ describe("wsNativeApi", () => {
   });
 
   it("forwards provider-model discovery requests to the server websocket method", async () => {
-    requestMock.mockResolvedValue({ codex: [], claudeAgent: [], gemini: [] });
+    requestMock.mockResolvedValue({
+      codex: [],
+      claudeAgent: [],
+      gemini: [],
+      cursor: [],
+      openCode: [],
+    });
     const { createWsNativeApi } = await import("./wsNativeApi");
 
     const api = createWsNativeApi();

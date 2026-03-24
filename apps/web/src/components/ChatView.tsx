@@ -100,6 +100,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
+  FolderIcon,
   ListTodoIcon,
   LockIcon,
   LockOpenIcon,
@@ -107,7 +108,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
+import { Menu, MenuItem, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import {
   Dialog,
   DialogContent,
@@ -202,6 +203,28 @@ const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = [];
 const EMPTY_AVAILABLE_EDITORS: EditorId[] = [];
 const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+const RUNTIME_MODE_LABELS: Record<RuntimeMode, string> = {
+  "approval-required": "Supervised",
+  "workspace-write": "Workspace access",
+  "full-access": "Full access",
+};
+const RUNTIME_MODE_HELP_TEXT: Record<RuntimeMode, string> = {
+  "approval-required": "Ask before each command or file change.",
+  "workspace-write": "Run commands automatically inside the workspace only.",
+  "full-access": "Run commands automatically with full system access.",
+};
+
+function isRuntimeModeValue(value: string): value is RuntimeMode {
+  return value === "approval-required" || value === "workspace-write" || value === "full-access";
+}
+
+function runtimeModeLabel(mode: RuntimeMode): string {
+  return RUNTIME_MODE_LABELS[mode];
+}
+
+function runtimeModeHelpText(mode: RuntimeMode): string {
+  return RUNTIME_MODE_HELP_TEXT[mode];
+}
 
 function formatOutgoingPrompt(params: {
   provider: ProviderKind;
@@ -222,6 +245,10 @@ function providerLabel(provider: ProviderKind): string {
       return "Claude";
     case "gemini":
       return "Gemini";
+    case "cursor":
+      return "Cursor";
+    case "openCode":
+      return "OpenCode";
     default:
       return provider;
   }
@@ -234,7 +261,13 @@ function authHelpMessageForProvider(provider: ProviderKind): string {
   if (provider === "claudeAgent") {
     return "Run `claude auth login` in your terminal, then try again.";
   }
-  return "If you just installed Gemini CLI, run `gemini` once in a terminal, choose “Sign in with Google”, complete the browser flow, then retry here. If you use an API key, set `GEMINI_API_KEY` and run `gemini`.";
+  if (provider === "gemini") {
+    return "If you just installed Gemini CLI, run `gemini` once in a terminal, choose “Sign in with Google”, complete the browser flow, then retry here. If you use an API key, set `GEMINI_API_KEY` and run `gemini`.";
+  }
+  if (provider === "cursor") {
+    return "Run `cursor-agent login` in your terminal, then try again.";
+  }
+  return "Run `opencode auth login` in your terminal, then try again.";
 }
 
 function normalizeAuthPromptDetail(input: {
@@ -755,7 +788,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const providerOptionsForDispatch = useMemo(() => {
-    if (!settings.codexBinaryPath && !settings.codexHomePath && !settings.geminiBinaryPath) {
+    if (
+      !settings.codexBinaryPath &&
+      !settings.codexHomePath &&
+      !settings.geminiBinaryPath &&
+      !settings.cursorBinaryPath &&
+      !settings.openCodeBinaryPath
+    ) {
       return undefined;
     }
     return {
@@ -774,8 +813,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
             },
           }
         : {}),
+      ...(settings.cursorBinaryPath
+        ? {
+            cursor: {
+              binaryPath: settings.cursorBinaryPath,
+            },
+          }
+        : {}),
+      ...(settings.openCodeBinaryPath
+        ? {
+            openCode: {
+              binaryPath: settings.openCodeBinaryPath,
+            },
+          }
+        : {}),
     };
-  }, [settings.codexBinaryPath, settings.codexHomePath, settings.geminiBinaryPath]);
+  }, [
+    settings.codexBinaryPath,
+    settings.codexHomePath,
+    settings.geminiBinaryPath,
+    settings.cursorBinaryPath,
+    settings.openCodeBinaryPath,
+  ]);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings, providerModelsQuery.data),
@@ -1788,11 +1847,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const toggleInteractionMode = useCallback(() => {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
-  const toggleRuntimeMode = useCallback(() => {
-    void handleRuntimeModeChange(
-      runtimeMode === "full-access" ? "approval-required" : "full-access",
-    );
-  }, [handleRuntimeModeChange, runtimeMode]);
+  const handleRuntimeModeSelect = useCallback(
+    (mode: RuntimeMode) => {
+      void handleRuntimeModeChange(mode);
+    },
+    [handleRuntimeModeChange],
+  );
   const togglePlanSidebar = useCallback(() => {
     setPlanSidebarOpen((open) => {
       if (open) {
@@ -4017,7 +4077,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                             traitsMenuContent={providerTraitsMenuContent}
                             onToggleInteractionMode={toggleInteractionMode}
                             onTogglePlanSidebar={togglePlanSidebar}
-                            onToggleRuntimeMode={toggleRuntimeMode}
+                            onRuntimeModeChange={handleRuntimeModeSelect}
                           />
                         ) : (
                           <>
@@ -4059,29 +4119,70 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               className="mx-0.5 hidden h-4 sm:block"
                             />
 
-                            <Button
-                              variant="ghost"
-                              className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
-                              size="sm"
-                              type="button"
-                              onClick={() =>
-                                void handleRuntimeModeChange(
-                                  runtimeMode === "full-access"
-                                    ? "approval-required"
-                                    : "full-access",
-                                )
-                              }
-                              title={
-                                runtimeMode === "full-access"
-                                  ? "Full access — click to require approvals"
-                                  : "Approval required — click for full access"
-                              }
-                            >
-                              {runtimeMode === "full-access" ? <LockOpenIcon /> : <LockIcon />}
-                              <span className="sr-only sm:not-sr-only">
-                                {runtimeMode === "full-access" ? "Full access" : "Supervised"}
-                              </span>
-                            </Button>
+                            <Menu>
+                              <MenuTrigger
+                                render={
+                                  <Button
+                                    variant="ghost"
+                                    className="shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3"
+                                    size="sm"
+                                    type="button"
+                                    title={runtimeModeHelpText(runtimeMode)}
+                                  />
+                                }
+                              >
+                                {runtimeMode === "full-access" ? (
+                                  <LockOpenIcon />
+                                ) : runtimeMode === "workspace-write" ? (
+                                  <FolderIcon />
+                                ) : (
+                                  <LockIcon />
+                                )}
+                                <span className="sr-only sm:not-sr-only">
+                                  {runtimeModeLabel(runtimeMode)}
+                                </span>
+                                <ChevronDownIcon className="size-3 text-muted-foreground/70" />
+                              </MenuTrigger>
+                              <MenuPopup align="start">
+                                <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+                                  Access
+                                </div>
+                                <MenuRadioGroup
+                                  value={runtimeMode}
+                                  onValueChange={(value) => {
+                                    if (!value || !isRuntimeModeValue(value)) {
+                                      return;
+                                    }
+                                    handleRuntimeModeSelect(value);
+                                  }}
+                                >
+                                  <MenuRadioItem value="approval-required">
+                                    <span className="flex flex-col">
+                                      <span>Supervised</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Ask before each command or file change.
+                                      </span>
+                                    </span>
+                                  </MenuRadioItem>
+                                  <MenuRadioItem value="workspace-write">
+                                    <span className="flex flex-col">
+                                      <span>Workspace access</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Unlimited commands inside workspace only.
+                                      </span>
+                                    </span>
+                                  </MenuRadioItem>
+                                  <MenuRadioItem value="full-access">
+                                    <span className="flex flex-col">
+                                      <span>Full access</span>
+                                      <span className="text-muted-foreground text-xs">
+                                        Unlimited commands with full system access.
+                                      </span>
+                                    </span>
+                                  </MenuRadioItem>
+                                </MenuRadioGroup>
+                              </MenuPopup>
+                            </Menu>
 
                             {activePlan || sidebarProposedPlan || planSidebarOpen ? (
                               <>

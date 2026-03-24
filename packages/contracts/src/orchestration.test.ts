@@ -144,6 +144,28 @@ it.effect("preserves explicit provider and runtime mode in thread.turn.start", (
   }),
 );
 
+it.effect("accepts workspace-write runtime mode in thread.turn.start", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: "thread.turn.start",
+      commandId: "cmd-turn-2-workspace-write",
+      threadId: "thread-1",
+      message: {
+        messageId: "msg-2-workspace-write",
+        role: "user",
+        text: "hello",
+        attachments: [],
+      },
+      provider: "codex",
+      runtimeMode: "workspace-write",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.strictEqual(parsed.provider, "codex");
+    assert.strictEqual(parsed.runtimeMode, "workspace-write");
+    assert.strictEqual(parsed.interactionMode, DEFAULT_PROVIDER_INTERACTION_MODE);
+  }),
+);
+
 it.effect("decodes thread.created runtime mode for historical events", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadCreatedPayload({

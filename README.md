@@ -13,4 +13,5 @@ Right now only editing the desktop app which is below,
 Install the [desktop app from the Releases page](https://github.com/kkorenn/k1code/releases)
 
 ## Contributions
+
 if you make a pull request I will most likely look at it, even tho I don't believe anyone will make one.

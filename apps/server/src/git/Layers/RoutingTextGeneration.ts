@@ -31,6 +31,26 @@ class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShap
   "t3/git/Layers/RoutingTextGeneration/ClaudeTextGen",
 ) {}
 
+// Gemini/Cursor/OpenCode git text-generation providers currently reuse Codex
+// generation. Force codex defaults for those providers to avoid passing
+// provider-specific model slugs to the Codex CLI.
+const normalizeRoutedInput = <T extends { provider?: TextGenerationProvider; model?: string }>(
+  input: T,
+): T => {
+  if (
+    input.provider === "codex" ||
+    input.provider === "claudeAgent" ||
+    input.provider === undefined
+  ) {
+    return input;
+  }
+  return {
+    ...input,
+    provider: "codex",
+    model: undefined,
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Routing implementation
 // ---------------------------------------------------------------------------
@@ -43,9 +63,18 @@ const makeRoutingTextGeneration = Effect.gen(function* () {
     provider === "claudeAgent" ? claude : codex;
 
   return {
-    generateCommitMessage: (input) => route(input.provider).generateCommitMessage(input),
-    generatePrContent: (input) => route(input.provider).generatePrContent(input),
-    generateBranchName: (input) => route(input.provider).generateBranchName(input),
+    generateCommitMessage: (input) => {
+      const normalized = normalizeRoutedInput(input);
+      return route(normalized.provider).generateCommitMessage(normalized);
+    },
+    generatePrContent: (input) => {
+      const normalized = normalizeRoutedInput(input);
+      return route(normalized.provider).generatePrContent(normalized);
+    },
+    generateBranchName: (input) => {
+      const normalized = normalizeRoutedInput(input);
+      return route(normalized.provider).generateBranchName(normalized);
+    },
   } satisfies TextGenerationShape;
 });
 

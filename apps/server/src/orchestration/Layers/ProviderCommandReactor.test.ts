@@ -112,7 +112,9 @@ describe("ProviderCommandReactor", () => {
         "provider" in input &&
         (input.provider === "codex" ||
           input.provider === "claudeAgent" ||
-          input.provider === "gemini")
+          input.provider === "gemini" ||
+          input.provider === "cursor" ||
+          input.provider === "openCode")
           ? input.provider
           : "codex";
       const resumeCursor =
@@ -140,7 +142,9 @@ describe("ProviderCommandReactor", () => {
           typeof input === "object" &&
           input !== null &&
           "runtimeMode" in input &&
-          (input.runtimeMode === "approval-required" || input.runtimeMode === "full-access")
+          (input.runtimeMode === "approval-required" ||
+            input.runtimeMode === "workspace-write" ||
+            input.runtimeMode === "full-access")
             ? input.runtimeMode
             : "full-access",
         ...(model !== undefined ? { model } : {}),

@@ -22,12 +22,27 @@ export interface CommitMessagePromptInput {
   includeBranch: boolean;
 }
 
+const CommitMessageSchema = Schema.Struct({
+  subject: Schema.String,
+  body: Schema.String,
+});
+
+const CommitMessageWithBranchSchema = Schema.Struct({
+  subject: Schema.String,
+  body: Schema.String,
+  branch: Schema.String,
+});
+
+type CommitMessageOutputSchema = typeof CommitMessageSchema | typeof CommitMessageWithBranchSchema;
+
 export interface CommitMessagePromptResult {
   prompt: string;
-  outputSchema: Schema.Struct.Type<any>;
+  outputSchema: CommitMessageOutputSchema;
 }
 
-export function buildCommitMessagePrompt(input: CommitMessagePromptInput): CommitMessagePromptResult {
+export function buildCommitMessagePrompt(
+  input: CommitMessagePromptInput,
+): CommitMessagePromptResult {
   const wantsBranch = input.includeBranch;
 
   const prompt = [
@@ -52,16 +67,7 @@ export function buildCommitMessagePrompt(input: CommitMessagePromptInput): Commi
     limitSection(input.stagedPatch, 40_000),
   ].join("\n");
 
-  const outputSchema = wantsBranch
-    ? Schema.Struct({
-        subject: Schema.String,
-        body: Schema.String,
-        branch: Schema.String,
-      })
-    : Schema.Struct({
-        subject: Schema.String,
-        body: Schema.String,
-      });
+  const outputSchema = wantsBranch ? CommitMessageWithBranchSchema : CommitMessageSchema;
 
   return { prompt, outputSchema };
 }
@@ -80,11 +86,13 @@ export interface PrContentPromptInput {
 
 export interface PrContentPromptResult {
   prompt: string;
-  outputSchema: Schema.Struct<{
-    title: typeof Schema.String;
-    body: typeof Schema.String;
-  }>;
+  outputSchema: typeof PrContentOutputSchema;
 }
+
+const PrContentOutputSchema = Schema.Struct({
+  title: Schema.String,
+  body: Schema.String,
+});
 
 export function buildPrContentPrompt(input: PrContentPromptInput): PrContentPromptResult {
   const prompt = [
@@ -109,12 +117,7 @@ export function buildPrContentPrompt(input: PrContentPromptInput): PrContentProm
     limitSection(input.diffPatch, 40_000),
   ].join("\n");
 
-  const outputSchema = Schema.Struct({
-    title: Schema.String,
-    body: Schema.String,
-  });
-
-  return { prompt, outputSchema };
+  return { prompt, outputSchema: PrContentOutputSchema };
 }
 
 // ---------------------------------------------------------------------------
@@ -128,15 +131,16 @@ export interface BranchNamePromptInput {
 
 export interface BranchNamePromptResult {
   prompt: string;
-  outputSchema: Schema.Struct<{
-    branch: typeof Schema.String;
-  }>;
+  outputSchema: typeof BranchNameOutputSchema;
 }
+
+const BranchNameOutputSchema = Schema.Struct({
+  branch: Schema.String,
+});
 
 export function buildBranchNamePrompt(input: BranchNamePromptInput): BranchNamePromptResult {
   const attachmentLines = (input.attachments ?? []).map(
-    (attachment) =>
-      `- ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes)`,
+    (attachment) => `- ${attachment.name} (${attachment.mimeType}, ${attachment.sizeBytes} bytes)`,
   );
 
   const promptSections = [
@@ -160,9 +164,5 @@ export function buildBranchNamePrompt(input: BranchNamePromptInput): BranchNameP
   }
 
   const prompt = promptSections.join("\n");
-  const outputSchema = Schema.Struct({
-    branch: Schema.String,
-  });
-
-  return { prompt, outputSchema };
+  return { prompt, outputSchema: BranchNameOutputSchema };
 }

@@ -345,17 +345,23 @@ function mapCodexRuntimeMode(runtimeMode: RuntimeMode): {
   readonly approvalPolicy: "on-request" | "never";
   readonly sandbox: "workspace-write" | "danger-full-access";
 } {
-  if (runtimeMode === "approval-required") {
-    return {
-      approvalPolicy: "on-request",
-      sandbox: "workspace-write",
-    };
+  switch (runtimeMode) {
+    case "approval-required":
+      return {
+        approvalPolicy: "on-request",
+        sandbox: "workspace-write",
+      };
+    case "workspace-write":
+      return {
+        approvalPolicy: "never",
+        sandbox: "workspace-write",
+      };
+    default:
+      return {
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+      };
   }
-
-  return {
-    approvalPolicy: "never",
-    sandbox: "danger-full-access",
-  };
 }
 
 export function resolveCodexModelForAccount(

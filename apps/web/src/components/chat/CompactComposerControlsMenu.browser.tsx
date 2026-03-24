@@ -61,7 +61,7 @@ async function mountMenu(props?: {
       }
       onToggleInteractionMode={vi.fn()}
       onTogglePlanSidebar={vi.fn()}
-      onToggleRuntimeMode={vi.fn()}
+      onRuntimeModeChange={vi.fn()}
     />,
     { container: host },
   );
@@ -179,6 +179,21 @@ describe("CompactComposerControlsMenu", () => {
         expect(text).toContain("Effort");
         expect(text).toContain("Remove Ultrathink from the prompt to change effort.");
         expect(text).not.toContain("Fallback Effort");
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows workspace access in runtime mode options", async () => {
+    const mounted = await mountMenu();
+
+    try {
+      await page.getByLabelText("More composer controls").click();
+
+      await vi.waitFor(() => {
+        const text = document.body.textContent ?? "";
+        expect(text).toContain("Workspace access");
       });
     } finally {
       await mounted.cleanup();

@@ -1,10 +1,10 @@
 /**
- * GeminiAdapterLive - Scoped live implementation for the Gemini provider adapter.
+ * OpenCodeAdapterLive - Scoped live implementation for the OpenCode provider adapter.
  *
- * Runs Gemini CLI in headless mode per turn and projects outputs into canonical
- * provider runtime events consumed by orchestration.
+ * Runs OpenCode CLI in headless mode per turn and projects outputs into
+ * canonical provider runtime events consumed by orchestration.
  *
- * @module GeminiAdapterLive
+ * @module OpenCodeAdapterLive
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -29,18 +29,18 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
-import { GeminiAdapter, type GeminiAdapterShape } from "../Services/GeminiAdapter.ts";
+import { OpenCodeAdapter, type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
-const PROVIDER = "gemini" as const;
-const DEFAULT_GEMINI_BINARY_PATH = "gemini";
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-pro";
+const PROVIDER = "openCode" as const;
+const DEFAULT_OPENCODE_BINARY_PATH = "opencode";
+const DEFAULT_OPENCODE_MODEL = "openai/gpt-5.4";
 const MAX_HISTORY_TURNS = 24;
 const MAX_HISTORY_CHARS = 18_000;
-const GEMINI_AUTH_REQUIRED_MESSAGE =
-  'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.';
+const OPENCODE_AUTH_REQUIRED_MESSAGE =
+  "OpenCode is not authenticated. Run `opencode auth login` and try again.";
 
-interface GeminiTurnRecord {
+interface OpenCodeTurnRecord {
   readonly id: TurnId;
   readonly prompt: string;
   readonly response: string;
@@ -48,7 +48,7 @@ interface GeminiTurnRecord {
   readonly items: ReadonlyArray<unknown>;
 }
 
-interface GeminiRunningTurn {
+interface OpenCodeRunningTurn {
   readonly turnId: TurnId;
   readonly interactionMode: "default" | "plan";
   readonly itemId: RuntimeItemId;
@@ -56,14 +56,14 @@ interface GeminiRunningTurn {
   interrupted: boolean;
 }
 
-interface GeminiSessionContext {
+interface OpenCodeSessionContext {
   session: ProviderSession;
   binaryPath: string;
-  turns: GeminiTurnRecord[];
-  runningTurn: GeminiRunningTurn | null;
+  turns: OpenCodeTurnRecord[];
+  runningTurn: OpenCodeRunningTurn | null;
 }
 
-export interface GeminiAdapterLiveOptions {
+export interface OpenCodeAdapterLiveOptions {
   readonly nativeEventLogPath?: string;
   readonly nativeEventLogger?: EventNdjsonLogger;
 }
@@ -113,7 +113,7 @@ function makeRuntimeEventBase(input: {
   } as const;
 }
 
-function parseGeminiOutput(input: { readonly stdout: string; readonly stderr: string }): {
+function parseOpenCodeOutput(input: { readonly stdout: string; readonly stderr: string }): {
   readonly response: string;
   readonly error?: string;
 } {
@@ -122,36 +122,63 @@ function parseGeminiOutput(input: { readonly stdout: string; readonly stderr: st
     return { response: "", ...(input.stderr.trim() ? { error: input.stderr.trim() } : {}) };
   }
 
-  if (stdoutTrimmed.startsWith("{") || stdoutTrimmed.startsWith("[")) {
+  const textChunks: string[] = [];
+  let firstErrorMessage: string | undefined;
+  for (const line of stdoutTrimmed.split(/\r?\n/)) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      continue;
+    }
+    if (!trimmedLine.startsWith("{")) {
+      textChunks.push(trimmedLine);
+      continue;
+    }
+
     try {
-      const parsed = JSON.parse(stdoutTrimmed) as {
-        response?: unknown;
+      const parsed = JSON.parse(trimmedLine) as {
+        type?: unknown;
+        message?: unknown;
         error?: { message?: unknown } | unknown;
+        part?: {
+          text?: unknown;
+          error?: unknown;
+        };
       };
-      const response = typeof parsed.response === "string" ? parsed.response.trim() : "";
-      const errorMessage =
-        parsed.error && typeof parsed.error === "object" && parsed.error !== null
-          ? typeof (parsed.error as { message?: unknown }).message === "string"
-            ? (parsed.error as { message: string }).message.trim()
-            : undefined
+      const partText = typeof parsed.part?.text === "string" ? parsed.part.text : undefined;
+      if (partText && partText.trim().length > 0) {
+        textChunks.push(partText.trim());
+      }
+      const topLevelMessage =
+        typeof parsed.message === "string"
+          ? parsed.message.trim()
           : typeof parsed.error === "string"
             ? parsed.error.trim()
-            : undefined;
-      if (response.length > 0) {
-        return { response, ...(errorMessage ? { error: errorMessage } : {}) };
-      }
-      if (errorMessage) {
-        return { response: "", error: errorMessage };
+            : parsed.error && typeof parsed.error === "object" && parsed.error !== null
+              ? typeof (parsed.error as { message?: unknown }).message === "string"
+                ? ((parsed.error as { message: string }).message ?? "").trim()
+                : undefined
+              : undefined;
+      if (!firstErrorMessage && parsed.type === "error" && topLevelMessage) {
+        firstErrorMessage = topLevelMessage;
       }
     } catch {
-      // Fallback to treating stdout as plain text.
+      textChunks.push(trimmedLine);
     }
+  }
+
+  const response = textChunks.join("\n").trim();
+  if (response.length > 0) {
+    return { response, ...(firstErrorMessage ? { error: firstErrorMessage } : {}) };
+  }
+
+  if (firstErrorMessage) {
+    return { response: "", error: firstErrorMessage };
   }
 
   return { response: stdoutTrimmed };
 }
 
-function extractGeminiStructuredErrorMessage(raw: string): string | undefined {
+function extractOpenCodeStructuredErrorMessage(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) {
     return undefined;
@@ -187,18 +214,19 @@ function extractGeminiStructuredErrorMessage(raw: string): string | undefined {
   return undefined;
 }
 
-function normalizeGeminiFailureMessage(raw: string): string {
-  const structuredMessage = extractGeminiStructuredErrorMessage(raw);
+function normalizeOpenCodeFailureMessage(raw: string): string {
+  const structuredMessage = extractOpenCodeStructuredErrorMessage(raw);
   const message = (structuredMessage ?? raw).trim();
   const lower = message.toLowerCase();
   if (
-    lower.includes("please set an auth method") ||
-    lower.includes("/.gemini/settings.json") ||
+    lower.includes("not authenticated") ||
     lower.includes("not logged in") ||
-    lower.includes("please run /login") ||
-    lower.includes("authentication required")
+    lower.includes("authentication required") ||
+    lower.includes("no credentials") ||
+    lower.includes("run `opencode auth login`") ||
+    lower.includes("run opencode auth login")
   ) {
-    return GEMINI_AUTH_REQUIRED_MESSAGE;
+    return OPENCODE_AUTH_REQUIRED_MESSAGE;
   }
   return message;
 }
@@ -231,7 +259,7 @@ function buildAttachmentContext(input: {
 }
 
 function buildPromptWithHistory(input: {
-  readonly turns: ReadonlyArray<GeminiTurnRecord>;
+  readonly turns: ReadonlyArray<OpenCodeTurnRecord>;
   readonly prompt: string;
   readonly attachmentContext: string;
   readonly interactionMode: "default" | "plan";
@@ -259,14 +287,14 @@ function buildPromptWithHistory(input: {
   return parts.join("\n\n");
 }
 
-function createGeminiTurnItems(prompt: string, response: string): ReadonlyArray<unknown> {
+function createOpenCodeTurnItems(prompt: string, response: string): ReadonlyArray<unknown> {
   return [
     { role: "user", content: [{ type: "text", text: prompt }] },
     { role: "assistant", content: [{ type: "text", text: response }] },
   ];
 }
 
-const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
+const makeOpenCodeAdapter = (options?: OpenCodeAdapterLiveOptions) =>
   Effect.gen(function* () {
     const serverConfig = yield* Effect.service(ServerConfig);
     const nativeEventLogger =
@@ -278,7 +306,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         : undefined);
 
     const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
-    const sessions = new Map<ThreadId, GeminiSessionContext>();
+    const sessions = new Map<ThreadId, OpenCodeSessionContext>();
 
     const emitRuntimeEvent = (event: ProviderRuntimeEvent) =>
       Queue.offer(runtimeEventQueue, event).pipe(Effect.asVoid);
@@ -288,28 +316,28 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
 
     const getSessionContext = (
       threadId: ThreadId,
-    ): Effect.Effect<GeminiSessionContext, ProviderAdapterSessionNotFoundError> => {
+    ): Effect.Effect<OpenCodeSessionContext, ProviderAdapterSessionNotFoundError> => {
       const session = sessions.get(threadId);
       return session ? Effect.succeed(session) : Effect.fail(toSessionNotFound(threadId));
     };
 
-    const startSession: GeminiAdapterShape["startSession"] = (input) =>
+    const startSession: OpenCodeAdapterShape["startSession"] = (input) =>
       Effect.gen(function* () {
         if (input.provider !== undefined && input.provider !== PROVIDER) {
           return yield* new ProviderAdapterValidationError({
             provider: PROVIDER,
-            operation: "GeminiAdapter.startSession",
+            operation: "OpenCodeAdapter.startSession",
             issue: `Expected provider '${PROVIDER}' but received '${String(input.provider)}'.`,
           });
         }
 
         const existing = sessions.get(input.threadId);
         const binaryPath =
-          input.providerOptions?.gemini?.binaryPath?.trim() ||
+          input.providerOptions?.openCode?.binaryPath?.trim() ||
           existing?.binaryPath ||
-          DEFAULT_GEMINI_BINARY_PATH;
+          DEFAULT_OPENCODE_BINARY_PATH;
         const now = nowIso();
-        const model = input.model?.trim() || existing?.session.model || DEFAULT_GEMINI_MODEL;
+        const model = input.model?.trim() || existing?.session.model || DEFAULT_OPENCODE_MODEL;
 
         const session: ProviderSession = {
           provider: PROVIDER,
@@ -322,7 +350,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           updatedAt: now,
         };
 
-        const nextContext: GeminiSessionContext = {
+        const nextContext: OpenCodeSessionContext = {
           session,
           binaryPath,
           turns: existing?.turns ?? [],
@@ -332,7 +360,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
 
         yield* logNativeEvent(
           {
-            type: "gemini.session.started",
+            type: "openCode.session.started",
             threadId: input.threadId,
             runtimeMode: input.runtimeMode,
             model,
@@ -345,7 +373,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           type: "session.started",
           ...makeRuntimeEventBase({ threadId: input.threadId }),
           payload: {
-            message: "Gemini session started",
+            message: "OpenCode session started",
           },
         });
         yield* emitRuntimeEvent({
@@ -366,13 +394,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         return session;
       });
 
-    const executeGeminiTurnCommand = (input: {
+    const executeOpenCodeTurnCommand = (input: {
       readonly threadId: ThreadId;
       readonly turnId: TurnId;
       readonly binaryPath: string;
       readonly args: ReadonlyArray<string>;
       readonly cwd: string;
-      readonly runningTurn: GeminiRunningTurn;
+      readonly runningTurn: OpenCodeRunningTurn;
     }): Effect.Effect<
       {
         readonly code: number | null;
@@ -422,8 +450,8 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
                 reject(
                   new ProviderAdapterRequestError({
                     provider: PROVIDER,
-                    method: "GeminiAdapter.sendTurn",
-                    detail: toMessage(error, "Failed to spawn Gemini CLI process."),
+                    method: "OpenCodeAdapter.sendTurn",
+                    detail: toMessage(error, "Failed to spawn OpenCode CLI process."),
                     cause: error,
                   }),
                 );
@@ -444,14 +472,14 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         catch: (cause) =>
           new ProviderAdapterRequestError({
             provider: PROVIDER,
-            method: "GeminiAdapter.sendTurn",
-            detail: toMessage(cause, "Failed to run Gemini CLI command."),
+            method: "OpenCodeAdapter.sendTurn",
+            detail: toMessage(cause, "Failed to run OpenCode CLI command."),
             cause,
           }),
       });
 
     const runTurn = (input: {
-      readonly context: GeminiSessionContext;
+      readonly context: OpenCodeSessionContext;
       readonly turnInput: ProviderSendTurnInput;
       readonly turnId: TurnId;
       readonly itemId: RuntimeItemId;
@@ -474,21 +502,36 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             interactionMode,
           });
           const model =
-            input.turnInput.model?.trim() || input.context.session.model || DEFAULT_GEMINI_MODEL;
+            input.turnInput.model?.trim() || input.context.session.model || DEFAULT_OPENCODE_MODEL;
           const binaryPath = input.context.binaryPath;
+          const attachedFiles = (input.turnInput.attachments ?? [])
+            .map((attachment) =>
+              resolveAttachmentPath({
+                attachmentsDir: serverConfig.attachmentsDir,
+                attachment,
+              }),
+            )
+            .filter((attachmentPath): attachmentPath is string => {
+              if (!attachmentPath) {
+                return false;
+              }
+              return existsSync(attachmentPath);
+            });
           const args = [
-            "--prompt",
+            "run",
             prompt,
-            "--output-format",
+            "--format",
             "json",
             "--model",
             model,
-            ...(input.context.session.runtimeMode !== "approval-required" ? ["--yolo"] : []),
+            "--dir",
+            cwd,
+            ...attachedFiles.flatMap((filePath) => ["--file", filePath]),
           ];
 
           yield* logNativeEvent(
             {
-              type: "gemini.turn.command",
+              type: "openCode.turn.command",
               threadId,
               turnId: input.turnId,
               binaryPath,
@@ -502,12 +545,12 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           if (!runningTurn || runningTurn.turnId !== input.turnId) {
             return yield* new ProviderAdapterRequestError({
               provider: PROVIDER,
-              method: "GeminiAdapter.sendTurn",
-              detail: "Turn lifecycle state was lost before Gemini process startup.",
+              method: "OpenCodeAdapter.sendTurn",
+              detail: "Turn lifecycle state was lost before OpenCode process startup.",
             });
           }
 
-          const execution = yield* executeGeminiTurnCommand({
+          const execution = yield* executeOpenCodeTurnCommand({
             threadId,
             turnId: input.turnId,
             binaryPath,
@@ -518,7 +561,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
 
           yield* logNativeEvent(
             {
-              type: "gemini.turn.result",
+              type: "openCode.turn.result",
               threadId,
               turnId: input.turnId,
               code: execution.code,
@@ -568,8 +611,8 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             const rawMessage =
               execution.stderr.trim() ||
               execution.stdout.trim() ||
-              `Gemini CLI exited with code ${execution.code ?? "unknown"}.`;
-            const message = normalizeGeminiFailureMessage(rawMessage);
+              `OpenCode CLI exited with code ${execution.code ?? "unknown"}.`;
+            const message = normalizeOpenCodeFailureMessage(rawMessage);
             yield* emitRuntimeEvent({
               type: "runtime.error",
               ...makeRuntimeEventBase({ threadId, turnId: input.turnId }),
@@ -604,12 +647,12 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             return;
           }
 
-          const parsed = parseGeminiOutput({
+          const parsed = parseOpenCodeOutput({
             stdout: execution.stdout,
             stderr: execution.stderr,
           });
           const response = parsed.response.trim();
-          const error = parsed.error ? normalizeGeminiFailureMessage(parsed.error) : undefined;
+          const error = parsed.error ? normalizeOpenCodeFailureMessage(parsed.error) : undefined;
           if (!response && error) {
             yield* emitRuntimeEvent({
               type: "runtime.error",
@@ -679,7 +722,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
             prompt: rawPrompt,
             response,
             createdAt: finishAt,
-            items: createGeminiTurnItems(rawPrompt, response),
+            items: createOpenCodeTurnItems(rawPrompt, response),
           });
 
           yield* emitRuntimeEvent({
@@ -709,8 +752,8 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
           Effect.matchEffect({
             onFailure: (error) =>
               Effect.gen(function* () {
-                const rawMessage = toMessage(error, "Gemini turn failed.");
-                const message = normalizeGeminiFailureMessage(rawMessage);
+                const rawMessage = toMessage(error, "OpenCode turn failed.");
+                const message = normalizeOpenCodeFailureMessage(rawMessage);
                 const finishAt = nowIso();
                 yield* emitRuntimeEvent({
                   type: "runtime.error",
@@ -757,7 +800,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         ),
       );
 
-    const sendTurn: GeminiAdapterShape["sendTurn"] = (input) =>
+    const sendTurn: OpenCodeAdapterShape["sendTurn"] = (input) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(input.threadId);
         if (context.session.status === "closed") {
@@ -766,13 +809,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         if (context.runningTurn) {
           return yield* new ProviderAdapterRequestError({
             provider: PROVIDER,
-            method: "GeminiAdapter.sendTurn",
-            detail: "A Gemini turn is already running for this thread.",
+            method: "OpenCodeAdapter.sendTurn",
+            detail: "An OpenCode turn is already running for this thread.",
           });
         }
 
-        const turnId = TurnId.makeUnsafe(`gemini-turn-${crypto.randomUUID()}`);
-        const itemId = RuntimeItemId.makeUnsafe(`gemini-item-${crypto.randomUUID()}`);
+        const turnId = TurnId.makeUnsafe(`openCode-turn-${crypto.randomUUID()}`);
+        const itemId = RuntimeItemId.makeUnsafe(`openCode-item-${crypto.randomUUID()}`);
         const startedAt = nowIso();
         context.session = {
           ...context.session,
@@ -815,7 +858,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         };
       });
 
-    const interruptTurn: GeminiAdapterShape["interruptTurn"] = (threadId, turnId) =>
+    const interruptTurn: OpenCodeAdapterShape["interruptTurn"] = (threadId, turnId) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         const runningTurn = context.runningTurn;
@@ -831,7 +874,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         }
       });
 
-    const respondToRequest: GeminiAdapterShape["respondToRequest"] = (
+    const respondToRequest: OpenCodeAdapterShape["respondToRequest"] = (
       threadId,
       requestId,
       decision,
@@ -839,13 +882,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
       Effect.fail(
         new ProviderAdapterRequestError({
           provider: PROVIDER,
-          method: "GeminiAdapter.respondToRequest",
-          detail: `Gemini has no pending approval request '${requestId}' for thread '${threadId}'.`,
+          method: "OpenCodeAdapter.respondToRequest",
+          detail: `OpenCode has no pending approval request '${requestId}' for thread '${threadId}'.`,
           cause: { decision },
         }),
       );
 
-    const respondToUserInput: GeminiAdapterShape["respondToUserInput"] = (
+    const respondToUserInput: OpenCodeAdapterShape["respondToUserInput"] = (
       threadId,
       requestId,
       answers,
@@ -853,13 +896,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
       Effect.fail(
         new ProviderAdapterRequestError({
           provider: PROVIDER,
-          method: "GeminiAdapter.respondToUserInput",
-          detail: `Gemini has no pending user-input request '${requestId}' for thread '${threadId}'.`,
+          method: "OpenCodeAdapter.respondToUserInput",
+          detail: `OpenCode has no pending user-input request '${requestId}' for thread '${threadId}'.`,
           cause: { answers },
         }),
       );
 
-    const stopSession: GeminiAdapterShape["stopSession"] = (threadId) =>
+    const stopSession: OpenCodeAdapterShape["stopSession"] = (threadId) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         context.runningTurn?.process?.kill("SIGTERM");
@@ -882,13 +925,13 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         });
       });
 
-    const listSessions: GeminiAdapterShape["listSessions"] = () =>
+    const listSessions: OpenCodeAdapterShape["listSessions"] = () =>
       Effect.sync(() => Array.from(sessions.values(), (session) => session.session));
 
-    const hasSession: GeminiAdapterShape["hasSession"] = (threadId) =>
+    const hasSession: OpenCodeAdapterShape["hasSession"] = (threadId) =>
       Effect.sync(() => sessions.has(threadId));
 
-    const readThread: GeminiAdapterShape["readThread"] = (threadId) =>
+    const readThread: OpenCodeAdapterShape["readThread"] = (threadId) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         return {
@@ -900,14 +943,14 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         };
       });
 
-    const rollbackThread: GeminiAdapterShape["rollbackThread"] = (threadId, numTurns) =>
+    const rollbackThread: OpenCodeAdapterShape["rollbackThread"] = (threadId, numTurns) =>
       Effect.gen(function* () {
         const context = yield* getSessionContext(threadId);
         if (context.runningTurn) {
           return yield* new ProviderAdapterRequestError({
             provider: PROVIDER,
-            method: "GeminiAdapter.rollbackThread",
-            detail: "Cannot roll back while a Gemini turn is running.",
+            method: "OpenCodeAdapter.rollbackThread",
+            detail: "Cannot roll back while an OpenCode turn is running.",
           });
         }
         const safeNumTurns = Math.max(0, Math.floor(numTurns));
@@ -923,7 +966,7 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
         };
       });
 
-    const stopAll: GeminiAdapterShape["stopAll"] = () =>
+    const stopAll: OpenCodeAdapterShape["stopAll"] = () =>
       Effect.sync(() => {
         for (const context of sessions.values()) {
           context.runningTurn?.process?.kill("SIGTERM");
@@ -952,11 +995,11 @@ const makeGeminiAdapter = (options?: GeminiAdapterLiveOptions) =>
       rollbackThread,
       stopAll,
       streamEvents: Stream.fromQueue(runtimeEventQueue),
-    } satisfies GeminiAdapterShape;
+    } satisfies OpenCodeAdapterShape;
   });
 
-export const GeminiAdapterLive = Layer.effect(GeminiAdapter, makeGeminiAdapter());
+export const OpenCodeAdapterLive = Layer.effect(OpenCodeAdapter, makeOpenCodeAdapter());
 
-export function makeGeminiAdapterLive(options?: GeminiAdapterLiveOptions) {
-  return Layer.effect(GeminiAdapter, makeGeminiAdapter(options));
+export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
+  return Layer.effect(OpenCodeAdapter, makeOpenCodeAdapter(options));
 }

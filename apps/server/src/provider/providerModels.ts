@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
+import { stripVTControlCharacters } from "node:util";
 
 import type {
   ProviderKind,
@@ -16,6 +17,7 @@ const MODEL_CACHE_TTL_MS = 60_000;
 
 const GEMINI_MODEL_SLUG_PATTERN = /\bgemini-[a-z0-9]+(?:[.-][a-z0-9]+)+\b/gi;
 const CLAUDE_MODEL_SLUG_PATTERN = /\bclaude-[a-z0-9]+(?:-[a-z0-9]+)+\b/gi;
+const OPENCODE_MODEL_SLUG_PATTERN = /\b[a-z0-9]+\/[a-z0-9]+(?:[.-][a-z0-9]+)+\b/gi;
 
 let cachedProviderModels: ProviderModelOptionsByProvider | null = null;
 let cachedProviderModelsAt = 0;
@@ -58,6 +60,8 @@ function emptyProviderModels(): ProviderModelOptionsByProvider {
     codex: [],
     claudeAgent: [],
     gemini: [],
+    cursor: [],
+    openCode: [],
   };
 }
 
@@ -76,8 +80,32 @@ function extractModelOptionsByPattern(
       ? option.slug.startsWith("gemini-")
       : provider === "claudeAgent"
         ? option.slug.startsWith("claude-")
-        : true,
+        : provider === "openCode"
+          ? option.slug.includes("/")
+          : true,
   );
+}
+
+function parseModelSlugLines(
+  output: string,
+  isCandidate: (value: string) => boolean,
+): ProviderModelOption[] {
+  const options = output
+    .split(/\r?\n/)
+    .map((line) => stripVTControlCharacters(line).trim())
+    .flatMap((line) => {
+      if (!line) {
+        return [];
+      }
+      const withoutBullet = line.replace(/^\d+\.\s+/, "");
+      const firstToken = withoutBullet.split(/\s+/)[0]?.trim() ?? "";
+      if (!firstToken || !isCandidate(firstToken)) {
+        return [];
+      }
+      const option = toProviderModelOption(firstToken);
+      return option ? [option] : [];
+    });
+  return dedupeModelOptions(options);
 }
 
 function parseJsonRpcErrorMessage(error: unknown): string {
@@ -359,17 +387,59 @@ async function discoverClaudeModels(): Promise<ProviderModelOption[]> {
   }
 }
 
+async function discoverCursorModels(): Promise<ProviderModelOption[]> {
+  try {
+    const [modelsCommand, modelPrompt] = await Promise.all([
+      runCommand("cursor-agent", ["models"]).catch(() => null),
+      runCommand("cursor-agent", ["-p", "/model", "--force", "--output-format", "text"]).catch(
+        () => null,
+      ),
+    ]);
+    const aggregateOutput = `${modelsCommand?.stdout ?? ""}\n${modelsCommand?.stderr ?? ""}\n${modelPrompt?.stdout ?? ""}\n${modelPrompt?.stderr ?? ""}`;
+    return parseModelSlugLines(aggregateOutput, (candidate) => {
+      return (
+        candidate.startsWith("gpt-") ||
+        candidate.startsWith("claude-") ||
+        candidate.startsWith("gemini-") ||
+        candidate.startsWith("o1") ||
+        candidate.startsWith("o3") ||
+        candidate.startsWith("o4")
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function discoverOpenCodeModels(): Promise<ProviderModelOption[]> {
+  try {
+    const [models, openAiModels, help] = await Promise.all([
+      runCommand("opencode", ["models"]).catch(() => null),
+      runCommand("opencode", ["models", "openai"]).catch(() => null),
+      runCommand("opencode", ["--help"]).catch(() => null),
+    ]);
+    const aggregateOutput = `${models?.stdout ?? ""}\n${models?.stderr ?? ""}\n${openAiModels?.stdout ?? ""}\n${openAiModels?.stderr ?? ""}\n${help?.stdout ?? ""}\n${help?.stderr ?? ""}`;
+    return extractModelOptionsByPattern("openCode", aggregateOutput, OPENCODE_MODEL_SLUG_PATTERN);
+  } catch {
+    return [];
+  }
+}
+
 async function discoverProviderModelsUncached(): Promise<ProviderModelOptionsByProvider> {
-  const [codex, claudeAgent, gemini] = await Promise.all([
+  const [codex, claudeAgent, gemini, cursor, openCode] = await Promise.all([
     discoverCodexModels(),
     discoverClaudeModels(),
     discoverGeminiModels(),
+    discoverCursorModels(),
+    discoverOpenCodeModels(),
   ]);
 
   return {
     codex,
     claudeAgent,
     gemini,
+    cursor,
+    openCode,
   };
 }
 

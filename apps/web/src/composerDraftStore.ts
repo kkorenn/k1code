@@ -405,7 +405,19 @@ function normalizeDeferredPlanImplementation(
 }
 
 function normalizeProviderKind(value: unknown): ProviderKind | null {
-  return value === "codex" || value === "claudeAgent" || value === "gemini" ? value : null;
+  return value === "codex" ||
+    value === "claudeAgent" ||
+    value === "gemini" ||
+    value === "cursor" ||
+    value === "openCode"
+    ? value
+    : null;
+}
+
+function normalizeRuntimeMode(value: unknown): RuntimeMode | null {
+  return value === "approval-required" || value === "workspace-write" || value === "full-access"
+    ? value
+    : null;
 }
 
 function normalizeProviderModelOptions(
@@ -629,11 +641,7 @@ function normalizePersistedDraftThreads(
           typeof createdAt === "string" && createdAt.length > 0
             ? createdAt
             : new Date().toISOString(),
-        runtimeMode:
-          candidateDraftThread.runtimeMode === "approval-required" ||
-          candidateDraftThread.runtimeMode === "full-access"
-            ? candidateDraftThread.runtimeMode
-            : DEFAULT_RUNTIME_MODE,
+        runtimeMode: normalizeRuntimeMode(candidateDraftThread.runtimeMode) ?? DEFAULT_RUNTIME_MODE,
         interactionMode:
           candidateDraftThread.interactionMode === "plan" ||
           candidateDraftThread.interactionMode === "default"
@@ -725,11 +733,7 @@ function normalizePersistedDraftsByThreadId(
       typeof draftCandidate.model === "string"
         ? normalizeModelSlug(draftCandidate.model, provider ?? "codex")
         : null;
-    const runtimeMode =
-      draftCandidate.runtimeMode === "approval-required" ||
-      draftCandidate.runtimeMode === "full-access"
-        ? draftCandidate.runtimeMode
-        : null;
+    const runtimeMode = normalizeRuntimeMode(draftCandidate.runtimeMode);
     const interactionMode =
       draftCandidate.interactionMode === "plan" || draftCandidate.interactionMode === "default"
         ? draftCandidate.interactionMode
@@ -1495,8 +1499,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         if (threadId.length === 0) {
           return;
         }
-        const nextRuntimeMode =
-          runtimeMode === "approval-required" || runtimeMode === "full-access" ? runtimeMode : null;
+        const nextRuntimeMode = normalizeRuntimeMode(runtimeMode);
         set((state) => {
           const existing = state.draftsByThreadId[threadId];
           if (!existing && nextRuntimeMode === null) {

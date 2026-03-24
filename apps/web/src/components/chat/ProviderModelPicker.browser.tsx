@@ -19,6 +19,14 @@ const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
     { slug: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
   ],
+  cursor: [
+    { slug: "gpt-5", name: "GPT 5" },
+    { slug: "claude-4.5-sonnet", name: "Claude 4.5 Sonnet" },
+  ],
+  openCode: [
+    { slug: "openai/gpt-5.4", name: "OpenAI GPT 5.4" },
+    { slug: "opencode/big-pickle", name: "OpenCode Big Pickle" },
+  ],
 } as const satisfies Record<ProviderKind, ReadonlyArray<{ slug: ModelSlug; name: string }>>;
 
 async function mountPicker(props: {
@@ -69,6 +77,8 @@ describe("ProviderModelPicker", () => {
         expect(text).toContain("Codex");
         expect(text).toContain("Claude");
         expect(text).toContain("Gemini");
+        expect(text).toContain("Cursor");
+        expect(text).toContain("OpenCode");
         expect(text).not.toContain("Claude Sonnet 4.6");
       });
     } finally {

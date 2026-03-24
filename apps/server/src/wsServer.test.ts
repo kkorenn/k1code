@@ -864,6 +864,8 @@ describe("WebSocket Server", () => {
       codex: expect.any(Array),
       claudeAgent: expect.any(Array),
       gemini: expect.any(Array),
+      cursor: expect.any(Array),
+      openCode: expect.any(Array),
     });
   });
 

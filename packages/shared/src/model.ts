@@ -19,6 +19,8 @@ const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> =
   claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
   gemini: new Set(MODEL_OPTIONS_BY_PROVIDER.gemini.map((option) => option.slug)),
+  cursor: new Set(MODEL_OPTIONS_BY_PROVIDER.cursor.map((option) => option.slug)),
+  openCode: new Set(MODEL_OPTIONS_BY_PROVIDER.openCode.map((option) => option.slug)),
 };
 
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
@@ -46,6 +48,10 @@ const DISPLAY_TOKEN_UPPERCASE = new Set([
   "url",
   "ux",
 ]);
+const PROVIDER_PREFIX_DISPLAY: Record<string, string> = {
+  openai: "OpenAI",
+  opencode: "OpenCode",
+};
 const MODEL_SLUG_DISPLAY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)+$/i;
 
 function canonicalizeModelDisplayText(value: string): string {
@@ -91,6 +97,18 @@ export function formatModelDisplayName(model: string | null | undefined): string
   if (!trimmed) {
     return "";
   }
+
+  const providerModelMatch = trimmed.match(/^([a-z0-9]+)\/([a-z0-9]+(?:[._-][a-z0-9]+)+)$/i);
+  if (providerModelMatch) {
+    const providerPrefix = providerModelMatch[1]?.toLowerCase() ?? "";
+    const modelSlug = providerModelMatch[2] ?? "";
+    const providerDisplay = PROVIDER_PREFIX_DISPLAY[providerPrefix];
+    if (providerDisplay) {
+      const modelDisplay = formatModelDisplayName(modelSlug);
+      return modelDisplay ? `${providerDisplay} ${modelDisplay}` : trimmed;
+    }
+  }
+
   if (!MODEL_SLUG_DISPLAY_PATTERN.test(trimmed)) {
     return trimmed;
   }
@@ -232,6 +250,16 @@ export function inferProviderForModel(
     return "gemini";
   }
 
+  const normalizedCursor = normalizeModelSlug(model, "cursor");
+  if (normalizedCursor && MODEL_SLUG_SET_BY_PROVIDER.cursor.has(normalizedCursor)) {
+    return "cursor";
+  }
+
+  const normalizedOpenCode = normalizeModelSlug(model, "openCode");
+  if (normalizedOpenCode && MODEL_SLUG_SET_BY_PROVIDER.openCode.has(normalizedOpenCode)) {
+    return "openCode";
+  }
+
   const normalizedClaude = normalizeModelSlug(model, "claudeAgent");
   if (normalizedClaude && MODEL_SLUG_SET_BY_PROVIDER.claudeAgent.has(normalizedClaude)) {
     return "claudeAgent";
@@ -249,6 +277,9 @@ export function inferProviderForModel(
   const trimmed = model.trim();
   if (trimmed.startsWith("gemini-")) {
     return "gemini";
+  }
+  if (trimmed.startsWith("opencode/") || trimmed.startsWith("openai/")) {
+    return "openCode";
   }
   if (trimmed.startsWith("claude-")) {
     return "claudeAgent";

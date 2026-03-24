@@ -28,8 +28,14 @@ const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 const GEMINI_PROVIDER = "gemini" as const;
+const CURSOR_PROVIDER = "cursor" as const;
+const OPENCODE_PROVIDER = "openCode" as const;
 const GEMINI_AUTH_REQUIRED_MESSAGE =
   'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.';
+const CURSOR_AUTH_REQUIRED_MESSAGE =
+  "Cursor is not authenticated. Run `cursor-agent login` and try again.";
+const OPENCODE_AUTH_REQUIRED_MESSAGE =
+  "OpenCode is not authenticated. Run `opencode auth login` and try again.";
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -370,6 +376,48 @@ const runGeminiCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const command = ChildProcess.make("gemini", [...args], {
+      shell: process.platform === "win32",
+    });
+
+    const child = yield* spawner.spawn(command);
+
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    return { stdout, stderr, code: exitCode } satisfies CommandResult;
+  }).pipe(Effect.scoped);
+
+const runCursorCommand = (args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const command = ChildProcess.make("cursor-agent", [...args], {
+      shell: process.platform === "win32",
+    });
+
+    const child = yield* spawner.spawn(command);
+
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    return { stdout, stderr, code: exitCode } satisfies CommandResult;
+  }).pipe(Effect.scoped);
+
+const runOpenCodeCommand = (args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const command = ChildProcess.make("opencode", [...args], {
       shell: process.platform === "win32",
     });
 
@@ -769,6 +817,325 @@ export const checkGeminiProviderStatus: Effect.Effect<
   } satisfies ServerProviderStatus;
 });
 
+// ── Cursor Agent health check ───────────────────────────────────────
+
+export function parseCursorAuthStatusFromOutput(result: CommandResult): {
+  readonly status: ServerProviderStatusState;
+  readonly authStatus: ServerProviderAuthStatus;
+  readonly message?: string;
+} {
+  const lowerOutput = `${result.stdout}\n${result.stderr}`.toLowerCase();
+
+  if (
+    lowerOutput.includes("unknown command") ||
+    lowerOutput.includes("unrecognized command") ||
+    lowerOutput.includes("unexpected argument")
+  ) {
+    return {
+      status: "warning",
+      authStatus: "unknown",
+      message: "Cursor authentication status command is unavailable in this Cursor version.",
+    };
+  }
+
+  if (
+    lowerOutput.includes("not logged in") ||
+    lowerOutput.includes("login required") ||
+    lowerOutput.includes("authentication required") ||
+    lowerOutput.includes("not authenticated") ||
+    lowerOutput.includes("run `cursor-agent login`") ||
+    lowerOutput.includes("run cursor-agent login")
+  ) {
+    return {
+      status: "error",
+      authStatus: "unauthenticated",
+      message: CURSOR_AUTH_REQUIRED_MESSAGE,
+    };
+  }
+
+  const parsedAuth = (() => {
+    const trimmed = result.stdout.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+      return { attemptedJsonParse: false as const, auth: undefined as boolean | undefined };
+    }
+    try {
+      return {
+        attemptedJsonParse: true as const,
+        auth: extractAuthBoolean(JSON.parse(trimmed)),
+      };
+    } catch {
+      return { attemptedJsonParse: false as const, auth: undefined as boolean | undefined };
+    }
+  })();
+
+  if (parsedAuth.auth === true) {
+    return { status: "ready", authStatus: "authenticated" };
+  }
+  if (parsedAuth.auth === false) {
+    return {
+      status: "error",
+      authStatus: "unauthenticated",
+      message: CURSOR_AUTH_REQUIRED_MESSAGE,
+    };
+  }
+  if (result.code === 0) {
+    return { status: "ready", authStatus: "authenticated" };
+  }
+  if (parsedAuth.attemptedJsonParse) {
+    return {
+      status: "warning",
+      authStatus: "unknown",
+      message:
+        "Could not verify Cursor authentication status from JSON output (missing auth marker).",
+    };
+  }
+
+  const detail = detailFromResult(result);
+  return {
+    status: "warning",
+    authStatus: "unknown",
+    message: detail
+      ? `Could not verify Cursor authentication status. ${detail}`
+      : "Could not verify Cursor authentication status.",
+  };
+}
+
+export const checkCursorProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runCursorCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: CURSOR_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "Cursor Agent CLI (`cursor-agent`) is not installed or not on PATH."
+        : `Failed to execute Cursor Agent CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: CURSOR_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Cursor Agent CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: CURSOR_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `Cursor Agent CLI is installed but failed to run. ${detail}`
+        : "Cursor Agent CLI is installed but failed to run.",
+    };
+  }
+
+  const authProbe = yield* runCursorCommand(["status"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(authProbe)) {
+    const error = authProbe.failure;
+    return {
+      provider: CURSOR_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message:
+        error instanceof Error
+          ? `Could not verify Cursor authentication status: ${error.message}.`
+          : "Could not verify Cursor authentication status.",
+    };
+  }
+
+  if (Option.isNone(authProbe.success)) {
+    return {
+      provider: CURSOR_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Could not verify Cursor authentication status. Timed out while running command.",
+    };
+  }
+
+  const parsed = parseCursorAuthStatusFromOutput(authProbe.success.value);
+  return {
+    provider: CURSOR_PROVIDER,
+    status: parsed.status,
+    available: true,
+    authStatus: parsed.authStatus,
+    checkedAt,
+    ...(parsed.message ? { message: parsed.message } : {}),
+  } satisfies ServerProviderStatus;
+});
+
+// ── OpenCode health check ───────────────────────────────────────────
+
+export const checkOpenCodeProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runOpenCodeCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "OpenCode CLI (`opencode`) is not installed or not on PATH."
+        : `Failed to execute OpenCode CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "OpenCode CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `OpenCode CLI is installed but failed to run. ${detail}`
+        : "OpenCode CLI is installed but failed to run.",
+    };
+  }
+
+  const authProbe = yield* runOpenCodeCommand(["auth", "list"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(authProbe)) {
+    const error = authProbe.failure;
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message:
+        error instanceof Error
+          ? `Could not verify OpenCode authentication status: ${error.message}.`
+          : "Could not verify OpenCode authentication status.",
+    };
+  }
+
+  if (Option.isNone(authProbe.success)) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Could not verify OpenCode authentication status. Timed out while running command.",
+    };
+  }
+
+  const authResult = authProbe.success.value;
+  const lowerAuthOutput = `${authResult.stdout}\n${authResult.stderr}`.toLowerCase();
+
+  if (
+    lowerAuthOutput.includes("unknown command") ||
+    lowerAuthOutput.includes("unrecognized command") ||
+    lowerAuthOutput.includes("unexpected argument")
+  ) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "OpenCode authentication status command is unavailable in this OpenCode version.",
+    } satisfies ServerProviderStatus;
+  }
+
+  if (
+    lowerAuthOutput.includes("0 credentials") ||
+    lowerAuthOutput.includes("no credentials") ||
+    lowerAuthOutput.includes("not authenticated") ||
+    lowerAuthOutput.includes("authentication required")
+  ) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "error" as const,
+      available: true,
+      authStatus: "unauthenticated" as const,
+      checkedAt,
+      message: OPENCODE_AUTH_REQUIRED_MESSAGE,
+    } satisfies ServerProviderStatus;
+  }
+
+  if (authResult.code === 0) {
+    return {
+      provider: OPENCODE_PROVIDER,
+      status: "ready" as const,
+      available: true,
+      authStatus: "authenticated" as const,
+      checkedAt,
+    } satisfies ServerProviderStatus;
+  }
+
+  const detail = detailFromResult(authResult);
+  return {
+    provider: OPENCODE_PROVIDER,
+    status: "warning" as const,
+    available: true,
+    authStatus: "unknown" as const,
+    checkedAt,
+    message: detail
+      ? `Could not verify OpenCode authentication status. ${detail}`
+      : "Could not verify OpenCode authentication status.",
+  } satisfies ServerProviderStatus;
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
@@ -778,7 +1145,13 @@ export const ProviderHealthLive = Layer.effect(
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const loadStatuses = Effect.all(
-      [checkCodexProviderStatus, checkClaudeProviderStatus, checkGeminiProviderStatus],
+      [
+        checkCodexProviderStatus,
+        checkClaudeProviderStatus,
+        checkGeminiProviderStatus,
+        checkCursorProviderStatus,
+        checkOpenCodeProviderStatus,
+      ],
       { concurrency: "unbounded" },
     ).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
