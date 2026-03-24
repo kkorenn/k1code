@@ -207,16 +207,35 @@ function resolvePythonForNodeGyp(): string | undefined {
   const probe = spawnSync("python", ["-c", "import sys;print(sys.executable)"], {
     encoding: "utf8",
   });
-  if (probe.status !== 0) {
-    return undefined;
+  if (probe.status === 0) {
+    const executable = probe.stdout.trim();
+    if (executable && existsSync(executable)) {
+      return executable;
+    }
   }
 
-  const executable = probe.stdout.trim();
-  if (!executable || !existsSync(executable)) {
-    return undefined;
+  const python3Probe = spawnSync("python3", ["-c", "import sys;print(sys.executable)"], {
+    encoding: "utf8",
+  });
+  if (python3Probe.status === 0) {
+    const executable = python3Probe.stdout.trim();
+    if (executable && existsSync(executable)) {
+      return executable;
+    }
   }
 
-  return executable;
+  // Windows often has the Python launcher (`py`) even when `python` is not on PATH.
+  const pyLauncherProbe = spawnSync("py", ["-3", "-c", "import sys;print(sys.executable)"], {
+    encoding: "utf8",
+  });
+  if (pyLauncherProbe.status === 0) {
+    const executable = pyLauncherProbe.stdout.trim();
+    if (executable && existsSync(executable)) {
+      return executable;
+    }
+  }
+
+  return undefined;
 }
 
 interface ResolvedBuildOptions {
@@ -756,10 +775,14 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
 
   if (process.platform === "win32") {
     const python = resolvePythonForNodeGyp();
-    if (python) {
-      buildEnv.PYTHON = python;
-      buildEnv.npm_config_python = python;
+    if (!python) {
+      return yield* new BuildScriptError({
+        message:
+          "Windows packaging requires Python 3 for native module rebuilds (node-gyp). Install Python 3.11+ and ensure either `python --version` or `py -3 --version` works, or set `PYTHON` / `npm_config_python` to your python.exe path.",
+      });
     }
+    buildEnv.PYTHON = python;
+    buildEnv.npm_config_python = python;
     buildEnv.npm_config_msvs_version = buildEnv.npm_config_msvs_version ?? "2022";
     buildEnv.GYP_MSVS_VERSION = buildEnv.GYP_MSVS_VERSION ?? "2022";
   }
