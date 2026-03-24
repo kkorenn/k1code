@@ -1,5 +1,6 @@
 import { RotateCcwIcon } from "lucide-react";
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { isElectron } from "../env";
 import { useSettingsRestore } from "../components/settings/SettingsPanels";
@@ -7,7 +8,10 @@ import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 
 function SettingsLayout() {
-  const { changedSettingLabels, restoreDefaults } = useSettingsRestore();
+  const [restoreSignal, setRestoreSignal] = useState(0);
+  const { changedSettingLabels, restoreDefaults } = useSettingsRestore(() =>
+    setRestoreSignal((value) => value + 1),
+  );
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -51,7 +55,9 @@ function SettingsLayout() {
           </div>
         )}
 
-        <Outlet />
+        <div key={restoreSignal} className="min-h-0 flex-1">
+          <Outlet />
+        </div>
       </div>
     </SidebarInset>
   );

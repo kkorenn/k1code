@@ -89,6 +89,12 @@ const INSTALL_PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
   },
 ] as const;
 
+const DEFAULT_CUSTOM_MODEL_PROVIDER = "codex" as const;
+const EMPTY_CUSTOM_MODEL_INPUT_BY_PROVIDER = { codex: "", claudeAgent: "" } satisfies Record<
+  ProviderKind,
+  string
+>;
+
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diff / 60_000);
@@ -180,7 +186,7 @@ function SettingsPageContainer({ children }: { children: ReactNode }) {
   );
 }
 
-export function useSettingsRestore() {
+export function useSettingsRestore(onRestored?: () => void) {
   const { theme, setTheme } = useTheme();
   const { settings, defaults, resetSettings } = useAppSettings();
 
@@ -239,7 +245,8 @@ export function useSettingsRestore() {
 
     setTheme("system");
     resetSettings();
-  }, [changedSettingLabels, resetSettings, setTheme]);
+    onRestored?.();
+  }, [changedSettingLabels, onRestored, resetSettings, setTheme]);
 
   return {
     changedSettingLabels,
@@ -418,11 +425,12 @@ export function GeneralSettingsPanel() {
 
 export function ModelsSettingsPanel() {
   const { settings, defaults, updateSettings } = useAppSettings();
-  const [selectedCustomModelProvider, setSelectedCustomModelProvider] =
-    useState<ProviderKind>("codex");
+  const [selectedCustomModelProvider, setSelectedCustomModelProvider] = useState<ProviderKind>(
+    DEFAULT_CUSTOM_MODEL_PROVIDER,
+  );
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
-  >({ codex: "", claudeAgent: "" });
+  >(EMPTY_CUSTOM_MODEL_INPUT_BY_PROVIDER);
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
   >({});
