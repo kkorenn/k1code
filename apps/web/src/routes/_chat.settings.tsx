@@ -55,7 +55,7 @@ function SettingsLayout() {
           </div>
         )}
 
-        <div key={restoreSignal} className="min-h-0 flex-1">
+        <div key={restoreSignal} className="min-h-0 flex flex-1 flex-col">
           <Outlet />
         </div>
       </div>
