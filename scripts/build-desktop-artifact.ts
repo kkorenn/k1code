@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import rootPackageJson from "../package.json" with { type: "json" };
 import desktopPackageJson from "../apps/desktop/package.json" with { type: "json" };
@@ -82,6 +82,73 @@ function detectHostBuildPlatform(hostPlatform: string): typeof BuildPlatform.Typ
   if (hostPlatform === "win32") return "win";
   return undefined;
 }
+
+function describeBuildPlatform(platform: typeof BuildPlatform.Type): string {
+  if (platform === "mac") return "macOS";
+  if (platform === "linux") return "Linux";
+  return "Windows";
+}
+
+function isBunExecutablePath(candidate: string): boolean {
+  const normalized = candidate.replaceAll("\\", "/").toLowerCase();
+  return normalized.endsWith("/bun") || normalized.endsWith("/bun.exe");
+}
+
+function resolveBunExecutable(): string {
+  const suffix = process.platform === "win32" ? "bun.exe" : "bun";
+  const candidates: string[] = [];
+
+  const npmExecPath = process.env.npm_execpath?.trim();
+  if (npmExecPath && isBunExecutablePath(npmExecPath)) {
+    candidates.push(npmExecPath);
+  }
+
+  const bunInstall = process.env.BUN_INSTALL?.trim();
+  if (bunInstall) {
+    candidates.push(join(bunInstall, "bin", suffix));
+  }
+
+  const homeDir = process.env.HOME?.trim() || process.env.USERPROFILE?.trim();
+  if (homeDir) {
+    candidates.push(join(homeDir, ".bun", "bin", suffix));
+  }
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "bun";
+}
+
+function withBunOnPath(env: NodeJS.ProcessEnv, bunExecutable: string): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = {
+    ...env,
+  };
+
+  const hasPathSeparator = bunExecutable.includes("/") || bunExecutable.includes("\\");
+  if (!hasPathSeparator) {
+    return nextEnv;
+  }
+
+  const bunDir = dirname(bunExecutable);
+  const pathKey = process.platform === "win32" ? "Path" : "PATH";
+  const delimiter = process.platform === "win32" ? ";" : ":";
+  const currentPath = nextEnv[pathKey] ?? nextEnv.PATH ?? nextEnv.Path ?? "";
+
+  const pathEntries = currentPath.split(delimiter).filter((entry) => entry.length > 0);
+  if (pathEntries.some((entry) => entry.toLowerCase() === bunDir.toLowerCase())) {
+    return nextEnv;
+  }
+
+  const updatedPath = currentPath ? `${bunDir}${delimiter}${currentPath}` : bunDir;
+  nextEnv.PATH = updatedPath;
+  nextEnv.Path = updatedPath;
+  return nextEnv;
+}
+
+const BunExecutable = resolveBunExecutable();
 
 function getDefaultArch(platform: typeof BuildPlatform.Type): typeof BuildArch.Type {
   const config = PLATFORM_CONFIG[platform];
@@ -517,11 +584,25 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   const repoRoot = yield* RepoRoot;
   const path = yield* Path.Path;
   const fs = yield* FileSystem.FileSystem;
+  const bunEnv = withBunOnPath(process.env, BunExecutable);
 
   const platformConfig = PLATFORM_CONFIG[options.platform];
   if (!platformConfig) {
     return yield* new BuildScriptError({
       message: `Unsupported platform '${options.platform}'.`,
+    });
+  }
+
+  const hostBuildPlatform = detectHostBuildPlatform(process.platform);
+  if (!hostBuildPlatform) {
+    return yield* new BuildScriptError({
+      message: `Unsupported host platform '${process.platform}'.`,
+    });
+  }
+
+  if (hostBuildPlatform !== options.platform) {
+    return yield* new BuildScriptError({
+      message: `Cross-platform desktop packaging is not supported for '${options.platform}' on '${hostBuildPlatform}' hosts. Build '${options.platform}' artifacts on ${describeBuildPlatform(options.platform)} (or use the GitHub Actions release matrix). Native modules such as node-pty require same-OS builds.`,
     });
   }
 
@@ -581,10 +662,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     yield* runCommand(
       ChildProcess.make({
         cwd: repoRoot,
+        env: bunEnv,
         ...commandOutputOptions(options.verbose),
         // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
         shell: process.platform === "win32",
-      })`bun run build:desktop`,
+      })`${BunExecutable} run build:desktop`,
     );
   }
 
@@ -648,10 +730,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* runCommand(
     ChildProcess.make({
       cwd: stageAppDir,
+      env: bunEnv,
       ...commandOutputOptions(options.verbose),
       // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
       shell: process.platform === "win32",
-    })`bun install --production`,
+    })`${BunExecutable} install --production`,
   );
 
   const buildEnv: NodeJS.ProcessEnv = {
@@ -684,14 +767,15 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* Effect.log(
     `[desktop-artifact] Building ${options.platform}/${options.target} (arch=${options.arch}, version=${appVersion})...`,
   );
+  const builderEnv = withBunOnPath(buildEnv, BunExecutable);
   yield* runCommand(
     ChildProcess.make({
       cwd: stageAppDir,
-      env: buildEnv,
+      env: builderEnv,
       ...commandOutputOptions(options.verbose),
       // Windows needs shell mode to resolve .cmd shims.
       shell: process.platform === "win32",
-    })`bunx electron-builder ${platformConfig.cliFlag} --${options.arch} --publish never`,
+    })`${BunExecutable} x electron-builder ${platformConfig.cliFlag} --${options.arch} --publish never`,
   );
 
   const stageDistDir = path.join(stageAppDir, "dist");
