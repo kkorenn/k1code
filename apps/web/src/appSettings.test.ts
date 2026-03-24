@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AppSettingsSchema,
+  DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
+  DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
   DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_TIMESTAMP_FORMAT,
   DEFAULT_UI_FONT_SIZE,
@@ -149,6 +151,16 @@ describe("resolveAppModelSelection", () => {
 describe("timestamp format defaults", () => {
   it("defaults timestamp format to locale", () => {
     expect(DEFAULT_TIMESTAMP_FORMAT).toBe("locale");
+  });
+});
+
+describe("sidebar sort defaults", () => {
+  it("defaults project sorting to updated_at", () => {
+    expect(DEFAULT_SIDEBAR_PROJECT_SORT_ORDER).toBe("updated_at");
+  });
+
+  it("defaults thread sorting to updated_at", () => {
+    expect(DEFAULT_SIDEBAR_THREAD_SORT_ORDER).toBe("updated_at");
   });
 });
 
@@ -425,6 +437,8 @@ describe("AppSettingsSchema", () => {
       defaultThreadEnvMode: "local",
       confirmThreadDelete: false,
       enableAssistantStreaming: false,
+      sidebarProjectSortOrder: DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
+      sidebarThreadSortOrder: DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
       uiFontSize: DEFAULT_UI_FONT_SIZE,
       terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,

@@ -26,6 +26,12 @@ export const MAX_FONT_FAMILY_LENGTH = 256;
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
+export const SidebarProjectSortOrder = Schema.Literals(["updated_at", "created_at", "manual"]);
+export type SidebarProjectSortOrder = typeof SidebarProjectSortOrder.Type;
+export const DEFAULT_SIDEBAR_PROJECT_SORT_ORDER: SidebarProjectSortOrder = "updated_at";
+export const SidebarThreadSortOrder = Schema.Literals(["updated_at", "created_at"]);
+export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
+export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
 export const UiFontSize = Schema.Literals(["sm", "md", "lg"]);
 export type UiFontSize = typeof UiFontSize.Type;
 export const DEFAULT_UI_FONT_SIZE: UiFontSize = "md";
@@ -95,6 +101,12 @@ export const AppSettingsSchema = Schema.Struct({
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
   diffWordWrap: Schema.Boolean.pipe(withDefaults(() => false)),
   enableAssistantStreaming: Schema.Boolean.pipe(withDefaults(() => false)),
+  sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(
+    withDefaults(() => DEFAULT_SIDEBAR_PROJECT_SORT_ORDER),
+  ),
+  sidebarThreadSortOrder: SidebarThreadSortOrder.pipe(
+    withDefaults(() => DEFAULT_SIDEBAR_THREAD_SORT_ORDER),
+  ),
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   uiFontSize: UiFontSize.pipe(withDefaults(() => DEFAULT_UI_FONT_SIZE)),
   terminalFontSize: TerminalFontSize.pipe(withDefaults(() => DEFAULT_TERMINAL_FONT_SIZE)),
