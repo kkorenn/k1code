@@ -11,6 +11,7 @@ import {
   getCustomModelsByProvider,
   getCustomModelsForProvider,
   getDefaultCustomModelsForProvider,
+  getProviderAvailabilityByProvider,
   getProviderStartOptions,
   MODEL_PROVIDER_SETTINGS,
   normalizeCustomModelSlugs,
@@ -200,6 +201,61 @@ describe("getProviderStartOptions", () => {
   });
 });
 
+describe("getProviderAvailabilityByProvider", () => {
+  const baseSettings = {
+    developerModeEnabled: false,
+    developerProviderAvailabilityCodex: "auto",
+    developerProviderAvailabilityClaude: "auto",
+    developerProviderAvailabilityGemini: "auto",
+    developerProviderAvailabilityCursor: "auto",
+    developerProviderAvailabilityOpenCode: "auto",
+  } as const;
+
+  it("uses real provider availability by default", () => {
+    expect(
+      getProviderAvailabilityByProvider(baseSettings, [
+        { provider: "codex", available: true },
+        { provider: "claudeAgent", available: false },
+        { provider: "gemini", available: true },
+        { provider: "cursor", available: false },
+        { provider: "openCode", available: true },
+      ]),
+    ).toEqual({
+      codex: true,
+      claudeAgent: false,
+      gemini: true,
+      cursor: false,
+      openCode: true,
+    });
+  });
+
+  it("applies developer overrides when enabled", () => {
+    expect(
+      getProviderAvailabilityByProvider(
+        {
+          ...baseSettings,
+          developerModeEnabled: true,
+          developerProviderAvailabilityCodex: "unavailable",
+          developerProviderAvailabilityClaude: "available",
+        },
+        [
+          { provider: "codex", available: true },
+          { provider: "claudeAgent", available: false },
+          { provider: "gemini", available: true },
+          { provider: "cursor", available: true },
+          { provider: "openCode", available: true },
+        ],
+      ),
+    ).toEqual({
+      codex: false,
+      claudeAgent: true,
+      gemini: true,
+      cursor: true,
+      openCode: true,
+    });
+  });
+});
+
 describe("provider-indexed custom model settings", () => {
   const settings = {
     customCodexModels: ["custom/codex-model"],
@@ -379,6 +435,12 @@ describe("AppSettingsSchema", () => {
       customGeminiModels: [],
       customCursorModels: [],
       customOpenCodeModels: [],
+      developerModeEnabled: false,
+      developerProviderAvailabilityCodex: "auto",
+      developerProviderAvailabilityClaude: "auto",
+      developerProviderAvailabilityGemini: "auto",
+      developerProviderAvailabilityCursor: "auto",
+      developerProviderAvailabilityOpenCode: "auto",
     });
   });
 });

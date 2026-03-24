@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Option, Schema } from "effect";
 import {
+  type ServerProviderStatus,
   TrimmedNonEmptyString,
   type ProviderKind,
   type ProviderModelOption,
@@ -32,12 +33,25 @@ export const DEFAULT_UI_FONT_SIZE: UiFontSize = "md";
 export const TerminalFontSize = Schema.Literals(["sm", "md", "lg", "xl"]);
 export type TerminalFontSize = typeof TerminalFontSize.Type;
 export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = "md";
+export const DeveloperProviderAvailabilityOverride = Schema.Literals([
+  "auto",
+  "available",
+  "unavailable",
+]);
+export type DeveloperProviderAvailabilityOverride =
+  typeof DeveloperProviderAvailabilityOverride.Type;
 type CustomModelSettingsKey =
   | "customCodexModels"
   | "customClaudeModels"
   | "customGeminiModels"
   | "customCursorModels"
   | "customOpenCodeModels";
+type ProviderAvailabilityOverrideSettingsKey =
+  | "developerProviderAvailabilityCodex"
+  | "developerProviderAvailabilityClaude"
+  | "developerProviderAvailabilityGemini"
+  | "developerProviderAvailabilityCursor"
+  | "developerProviderAvailabilityOpenCode";
 export type ProviderCustomModelConfig = {
   provider: ProviderKind;
   settingsKey: CustomModelSettingsKey;
@@ -103,6 +117,22 @@ export const AppSettingsSchema = Schema.Struct({
     "openCode",
   ]).pipe(withDefaults(() => "codex" as const)),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
+  developerModeEnabled: Schema.Boolean.pipe(withDefaults(() => false)),
+  developerProviderAvailabilityCodex: DeveloperProviderAvailabilityOverride.pipe(
+    withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
+  ),
+  developerProviderAvailabilityClaude: DeveloperProviderAvailabilityOverride.pipe(
+    withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
+  ),
+  developerProviderAvailabilityGemini: DeveloperProviderAvailabilityOverride.pipe(
+    withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
+  ),
+  developerProviderAvailabilityCursor: DeveloperProviderAvailabilityOverride.pipe(
+    withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
+  ),
+  developerProviderAvailabilityOpenCode: DeveloperProviderAvailabilityOverride.pipe(
+    withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
+  ),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 export interface AppModelOption {
@@ -162,6 +192,23 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
   },
 };
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
+const ALL_PROVIDER_KINDS: ReadonlyArray<ProviderKind> = [
+  "codex",
+  "claudeAgent",
+  "gemini",
+  "cursor",
+  "openCode",
+];
+const PROVIDER_AVAILABILITY_OVERRIDE_SETTING_KEY: Record<
+  ProviderKind,
+  ProviderAvailabilityOverrideSettingsKey
+> = {
+  codex: "developerProviderAvailabilityCodex",
+  claudeAgent: "developerProviderAvailabilityClaude",
+  gemini: "developerProviderAvailabilityGemini",
+  cursor: "developerProviderAvailabilityCursor",
+  openCode: "developerProviderAvailabilityOpenCode",
+};
 
 export function normalizeCustomModelSlugs(
   models: Iterable<string | null | undefined>,
@@ -390,6 +437,41 @@ export function getProviderStartOptions(
   };
 
   return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
+}
+
+export function getProviderAvailabilityByProvider(
+  settings: Pick<
+    AppSettings,
+    | "developerModeEnabled"
+    | "developerProviderAvailabilityCodex"
+    | "developerProviderAvailabilityClaude"
+    | "developerProviderAvailabilityGemini"
+    | "developerProviderAvailabilityCursor"
+    | "developerProviderAvailabilityOpenCode"
+  >,
+  statuses: ReadonlyArray<Pick<ServerProviderStatus, "provider" | "available">>,
+): Record<ProviderKind, boolean> {
+  const statusByProvider = new Map<ProviderKind, boolean>(
+    statuses.map((status) => [status.provider, status.available]),
+  );
+
+  return Object.fromEntries(
+    ALL_PROVIDER_KINDS.map((provider) => {
+      const statusAvailability = statusByProvider.get(provider) ?? true;
+      if (!settings.developerModeEnabled) {
+        return [provider, statusAvailability];
+      }
+
+      const override = settings[PROVIDER_AVAILABILITY_OVERRIDE_SETTING_KEY[provider]];
+      if (override === "available") {
+        return [provider, true];
+      }
+      if (override === "unavailable") {
+        return [provider, false];
+      }
+      return [provider, statusAvailability];
+    }),
+  ) as Record<ProviderKind, boolean>;
 }
 
 export function useAppSettings() {

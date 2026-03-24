@@ -8,6 +8,8 @@ import {
 } from "@k1tools/contracts";
 import { getModelOptions, normalizeModelSlug } from "@k1tools/shared/model";
 import {
+  type DeveloperProviderAvailabilityOverride,
+  getProviderAvailabilityByProvider,
   getCustomModelOptionsByProvider,
   getCustomModelsForProvider,
   getDefaultCustomModelsForProvider,
@@ -77,6 +79,15 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
+const DEVELOPER_PROVIDER_AVAILABILITY_LABELS: Record<
+  DeveloperProviderAvailabilityOverride,
+  string
+> = {
+  auto: "Auto (real status)",
+  available: "Force available",
+  unavailable: "Force unavailable",
+};
+
 function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
@@ -109,6 +120,11 @@ function SettingsRouteView() {
   const newProjectBasePath = settings.newProjectBasePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
+  const providerStatuses = serverConfigQuery.data?.providers ?? [];
+  const providerAvailabilityByProvider = getProviderAvailabilityByProvider(
+    settings,
+    providerStatuses,
+  );
 
   const textGenProvider = settings.textGenerationProvider;
   const textGenDefaultModel = DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[textGenProvider];
@@ -130,6 +146,56 @@ function SettingsRouteView() {
       (normalizeFontFamilyOverride(defaults.uiFontFamily) ?? "") ||
     (normalizeFontFamilyOverride(settings.monoFontFamily) ?? "") !==
       (normalizeFontFamilyOverride(defaults.monoFontFamily) ?? "");
+  const hasDeveloperOverrides =
+    settings.developerModeEnabled !== defaults.developerModeEnabled ||
+    settings.developerProviderAvailabilityCodex !== defaults.developerProviderAvailabilityCodex ||
+    settings.developerProviderAvailabilityClaude !== defaults.developerProviderAvailabilityClaude ||
+    settings.developerProviderAvailabilityGemini !== defaults.developerProviderAvailabilityGemini ||
+    settings.developerProviderAvailabilityCursor !== defaults.developerProviderAvailabilityCursor ||
+    settings.developerProviderAvailabilityOpenCode !==
+      defaults.developerProviderAvailabilityOpenCode;
+  const getDeveloperProviderAvailability = (
+    provider: ProviderKind,
+  ): DeveloperProviderAvailabilityOverride => {
+    switch (provider) {
+      case "codex":
+        return settings.developerProviderAvailabilityCodex;
+      case "claudeAgent":
+        return settings.developerProviderAvailabilityClaude;
+      case "gemini":
+        return settings.developerProviderAvailabilityGemini;
+      case "cursor":
+        return settings.developerProviderAvailabilityCursor;
+      case "openCode":
+        return settings.developerProviderAvailabilityOpenCode;
+      default:
+        return "auto";
+    }
+  };
+  const setDeveloperProviderAvailability = useCallback(
+    (provider: ProviderKind, value: DeveloperProviderAvailabilityOverride) => {
+      switch (provider) {
+        case "codex":
+          updateSettings({ developerProviderAvailabilityCodex: value });
+          return;
+        case "claudeAgent":
+          updateSettings({ developerProviderAvailabilityClaude: value });
+          return;
+        case "gemini":
+          updateSettings({ developerProviderAvailabilityGemini: value });
+          return;
+        case "cursor":
+          updateSettings({ developerProviderAvailabilityCursor: value });
+          return;
+        case "openCode":
+          updateSettings({ developerProviderAvailabilityOpenCode: value });
+          return;
+        default:
+          return;
+      }
+    },
+    [updateSettings],
+  );
 
   const openKeybindingsFile = useCallback(() => {
     if (!keybindingsConfigPath) return;
@@ -880,6 +946,7 @@ function SettingsRouteView() {
                   model={textGenModel}
                   lockedProvider={null}
                   modelOptionsByProvider={gitModelOptionsByProvider}
+                  providerAvailabilityByProvider={providerAvailabilityByProvider}
                   onProviderModelChange={(provider, model) => {
                     updateSettings({
                       textGenerationProvider: provider,
@@ -1072,6 +1139,123 @@ function SettingsRouteView() {
                 </div>
               ) : null}
             </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Developer mode</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Emulate provider availability locally for UI testing. This does not install or
+                  remove provider CLIs.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Enable emulation</p>
+                    <p className="text-xs text-muted-foreground">
+                      Use local overrides instead of only real provider health.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.developerModeEnabled}
+                    onCheckedChange={(checked) =>
+                      updateSettings({ developerModeEnabled: Boolean(checked) })
+                    }
+                    aria-label="Enable developer mode emulation"
+                  />
+                </div>
+
+                {settings.developerModeEnabled ? (
+                  <div className="space-y-3">
+                    {MODEL_PROVIDER_SETTINGS.map((providerSettings) => {
+                      const provider = providerSettings.provider;
+                      const overrideValue = getDeveloperProviderAvailability(provider);
+                      const serverAvailability =
+                        providerStatuses.find((status) => status.provider === provider)
+                          ?.available ?? true;
+                      const effectiveAvailability = providerAvailabilityByProvider[provider];
+                      return (
+                        <div
+                          key={`developer-mode-provider-${provider}`}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground">
+                              {providerSettings.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Real: {serverAvailability ? "Available" : "Unavailable"} · Effective:{" "}
+                              {effectiveAvailability ? "Available" : "Unavailable"}
+                            </p>
+                          </div>
+                          <Select
+                            value={overrideValue}
+                            onValueChange={(value) => {
+                              if (
+                                value !== "auto" &&
+                                value !== "available" &&
+                                value !== "unavailable"
+                              ) {
+                                return;
+                              }
+                              setDeveloperProviderAvailability(provider, value);
+                            }}
+                          >
+                            <SelectTrigger
+                              className="w-44"
+                              aria-label={`${providerSettings.title} developer availability`}
+                            >
+                              <SelectValue>
+                                {DEVELOPER_PROVIDER_AVAILABILITY_LABELS[overrideValue]}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectPopup align="end">
+                              <SelectItem value="auto">
+                                {DEVELOPER_PROVIDER_AVAILABILITY_LABELS.auto}
+                              </SelectItem>
+                              <SelectItem value="available">
+                                {DEVELOPER_PROVIDER_AVAILABILITY_LABELS.available}
+                              </SelectItem>
+                              <SelectItem value="unavailable">
+                                {DEVELOPER_PROVIDER_AVAILABILITY_LABELS.unavailable}
+                              </SelectItem>
+                            </SelectPopup>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {hasDeveloperOverrides ? (
+                  <div className="flex justify-end">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        updateSettings({
+                          developerModeEnabled: defaults.developerModeEnabled,
+                          developerProviderAvailabilityCodex:
+                            defaults.developerProviderAvailabilityCodex,
+                          developerProviderAvailabilityClaude:
+                            defaults.developerProviderAvailabilityClaude,
+                          developerProviderAvailabilityGemini:
+                            defaults.developerProviderAvailabilityGemini,
+                          developerProviderAvailabilityCursor:
+                            defaults.developerProviderAvailabilityCursor,
+                          developerProviderAvailabilityOpenCode:
+                            defaults.developerProviderAvailabilityOpenCode,
+                        })
+                      }
+                    >
+                      Restore default
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">About</h2>

@@ -33,16 +33,21 @@ async function mountPicker(props: {
   provider: ProviderKind;
   model: ModelSlug;
   lockedProvider: ProviderKind | null;
+  providerAvailabilityByProvider?: Partial<Record<ProviderKind, boolean>>;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
   const onProviderModelChange = vi.fn();
+  const providerAvailabilityProps = props.providerAvailabilityByProvider
+    ? { providerAvailabilityByProvider: props.providerAvailabilityByProvider }
+    : {};
   const screen = await render(
     <ProviderModelPicker
       provider={props.provider}
       model={props.model}
       lockedProvider={props.lockedProvider}
       modelOptionsByProvider={MODEL_OPTIONS_BY_PROVIDER}
+      {...providerAvailabilityProps}
       onProviderModelChange={onProviderModelChange}
     />,
     { container: host },
@@ -122,6 +127,61 @@ describe("ProviderModelPicker", () => {
         "claudeAgent",
         "claude-sonnet-4-6",
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows unavailable providers as disabled entries", async () => {
+    const mounted = await mountPicker({
+      provider: "codex",
+      model: "gpt-5-codex",
+      lockedProvider: null,
+      providerAvailabilityByProvider: {
+        codex: true,
+        claudeAgent: true,
+        gemini: false,
+        cursor: true,
+        openCode: true,
+      },
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        const text = document.body.textContent ?? "";
+        expect(text).toContain("Gemini");
+        expect(text).toContain("Unavailable");
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens install guidance when an unavailable provider is selected", async () => {
+    const mounted = await mountPicker({
+      provider: "codex",
+      model: "gpt-5-codex",
+      lockedProvider: null,
+      providerAvailabilityByProvider: {
+        codex: true,
+        claudeAgent: true,
+        gemini: false,
+        cursor: true,
+        openCode: true,
+      },
+    });
+
+    try {
+      await page.getByRole("button").click();
+      await page.getByRole("menuitem", { name: "Gemini Unavailable" }).click();
+
+      await vi.waitFor(() => {
+        const text = document.body.textContent ?? "";
+        expect(text).toContain("Gemini Unavailable");
+        expect(text).toContain("Open provider setup docs");
+      });
     } finally {
       await mounted.cleanup();
     }

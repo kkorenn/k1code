@@ -125,6 +125,7 @@ import { type NewProjectScriptInput } from "./ProjectScriptsControl";
 import {
   commandForProjectScript,
   nextProjectScriptId,
+  projectScriptCwd,
   projectScriptRuntimeEnv,
   projectScriptIdFromCommand,
   setupProjectScript,
@@ -135,6 +136,7 @@ import { readNativeApi } from "~/nativeApi";
 import {
   getCustomModelOptionsByProvider,
   getCustomModelsByProvider,
+  getProviderAvailabilityByProvider,
   getProviderStartOptions,
   resolveAppModelSelection,
   useAppSettings,
@@ -1171,7 +1173,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     latestTurnSettled,
     timelineEntries,
   ]);
-  const gitCwd = activeThread?.worktreePath ?? activeProject?.cwd ?? null;
+  const gitCwd = activeProject
+    ? projectScriptCwd({
+        project: { cwd: activeProject.cwd },
+        worktreePath: activeThread?.worktreePath ?? null,
+      })
+    : null;
   const composerTriggerKind = composerTrigger?.kind ?? null;
   const pathTriggerQuery = composerTrigger?.kind === "path" ? composerTrigger.query : "";
   const isPathTrigger = composerTriggerKind === "path";
@@ -1273,6 +1280,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
   const providerStatuses = serverConfigQuery.data?.providers ?? EMPTY_PROVIDER_STATUSES;
+  const providerAvailabilityByProvider = useMemo(
+    () => getProviderAvailabilityByProvider(settings, providerStatuses),
+    [providerStatuses, settings],
+  );
   const activeProviderStatus = useMemo(
     () => providerStatuses.find((status) => status.provider === selectedProvider) ?? null,
     [selectedProvider, providerStatuses],
@@ -1547,12 +1558,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
         worktreePath?: string | null;
         preferNewTerminal?: boolean;
         rememberAsLastInvoked?: boolean;
-        allowLocalDraftThread?: boolean;
       },
     ) => {
       const api = readNativeApi();
       if (!api || !activeThreadId || !activeProject || !activeThread) return;
-      if (!isServerThread && !options?.allowLocalDraftThread) return;
       if (options?.rememberAsLastInvoked !== false) {
         setLastInvokedScriptByProjectId((current) => {
           if (current[activeProject.id] === script.id) return current;
@@ -1621,7 +1630,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
       activeThread,
       activeThreadId,
       gitCwd,
-      isServerThread,
       setTerminalOpen,
       setThreadError,
       storeNewTerminal,
@@ -2832,7 +2840,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
           const setupScriptOptions: Parameters<typeof runProjectScript>[1] = {
             worktreePath: nextThreadWorktreePath,
             rememberAsLastInvoked: false,
-            allowLocalDraftThread: createdServerThreadForLocalDraft,
           };
           if (nextThreadWorktreePath) {
             setupScriptOptions.cwd = nextThreadWorktreePath;
@@ -3674,7 +3681,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
           activeThreadTitle={activeThread.title}
           activeProjectName={activeProject?.name}
           isGitRepo={isGitRepo}
-          openInCwd={activeThread.worktreePath ?? activeProject?.cwd ?? null}
+          openInCwd={gitCwd}
           activeProjectScripts={activeProject?.scripts}
           preferredScriptId={
             activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
@@ -4012,6 +4019,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           model={selectedModelForPickerWithCustomFallback}
                           lockedProvider={lockedProvider}
                           modelOptionsByProvider={modelOptionsByProvider}
+                          providerAvailabilityByProvider={providerAvailabilityByProvider}
                           {...(composerProviderState.modelPickerIconClassName
                             ? {
                                 activeProviderIconClassName:

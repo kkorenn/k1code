@@ -519,9 +519,11 @@ describe("composerDraftStore project draft thread mapping", () => {
   it("clears draft registration independently", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectId, threadId);
+    store.setPrompt(threadId, "remove me");
     store.clearDraftThread(threadId);
     expect(useComposerDraftStore.getState().getDraftThreadByProjectId(projectId)).toBeNull();
     expect(useComposerDraftStore.getState().getDraftThread(threadId)).toBeNull();
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
   });
 
   it("updates branch context on an existing draft thread", () => {
@@ -977,7 +979,7 @@ describe("composerDraftStore deferred plan implementation", () => {
       planMarkdown: "# Plan\n\n- step 1",
     });
 
-    store.clearThreadDraft(threadId);
+    store.clearDraftThread(threadId);
 
     expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
   });
