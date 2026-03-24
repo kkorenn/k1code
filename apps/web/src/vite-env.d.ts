@@ -14,6 +14,5 @@ declare global {
   interface Window {
     nativeApi?: NativeApi;
     desktopBridge?: DesktopBridge;
-    __TAURI_INTERNALS__?: unknown;
   }
 }

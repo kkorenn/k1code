@@ -630,6 +630,53 @@ async function waitForInteractionModeButton(
   );
 }
 
+async function waitForOverlaySpacer(): Promise<HTMLElement> {
+  return waitForElement(
+    () => document.querySelector<HTMLElement>('[data-chat-overlay-spacer="true"]'),
+    "Unable to find chat overlay spacer element.",
+  );
+}
+
+function overlaySpacerHeightPx(): number {
+  const spacer = document.querySelector<HTMLElement>('[data-chat-overlay-spacer="true"]');
+  if (!spacer) {
+    return 0;
+  }
+  return spacer.getBoundingClientRect().height;
+}
+
+async function waitForOverlaySpacerExpanded(): Promise<void> {
+  await vi.waitFor(
+    () => {
+      expect(overlaySpacerHeightPx()).toBeGreaterThan(0.5);
+    },
+    { timeout: 8_000, interval: 16 },
+  );
+}
+
+async function waitForOverlaySpacerCollapsed(): Promise<void> {
+  await vi.waitFor(
+    () => {
+      expect(overlaySpacerHeightPx()).toBeLessThan(0.5);
+    },
+    { timeout: 8_000, interval: 16 },
+  );
+}
+
+async function waitForComposerMenuPositioner(): Promise<HTMLElement> {
+  return waitForElement(
+    () => document.querySelector<HTMLElement>('[data-slot="menu-positioner"]'),
+    "Unable to find composer menu positioner.",
+  );
+}
+
+async function waitForMessagesScrollContainer(): Promise<HTMLDivElement> {
+  return waitForElement(
+    () => document.querySelector<HTMLDivElement>("div.overflow-y-auto.overscroll-y-contain"),
+    "Unable to find ChatView message scroll container.",
+  );
+}
+
 async function waitForImagesToLoad(scope: ParentNode): Promise<void> {
   const images = Array.from(scope.querySelectorAll("img"));
   if (images.length === 0) {
@@ -1771,6 +1818,150 @@ describe("ChatView timeline estimator parity (full app)", () => {
               planId: "plan-browser-test",
             },
           });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("expands the chat overlay spacer for slash command menu", async () => {
+    useComposerDraftStore.getState().setPrompt(THREAD_ID, "/");
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-slash-overlay-spacer-test" as MessageId,
+        targetText: "slash overlay spacer test",
+      }),
+    });
+
+    try {
+      await waitForOverlaySpacer();
+
+      await waitForElement(
+        () => document.querySelector<HTMLElement>('[data-chat-composer-overlay="command-menu"]'),
+        "Unable to find slash command overlay.",
+      );
+      await waitForOverlaySpacerExpanded();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("expands and collapses the chat overlay spacer for provider and runtime menus", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-provider-runtime-overlay-spacer-test" as MessageId,
+        targetText: "provider runtime overlay spacer test",
+      }),
+    });
+
+    try {
+      await waitForOverlaySpacer();
+      await waitForOverlaySpacerCollapsed();
+
+      const providerPickerButton = await waitForElement(
+        () =>
+          Array.from(
+            document.querySelectorAll<HTMLButtonElement>(
+              '[data-chat-composer-footer="true"] button',
+            ),
+          ).find((button) => button.textContent?.includes("GPT-5")) ?? null,
+        "Unable to find provider/model picker trigger.",
+      );
+      providerPickerButton.click();
+      await waitForComposerMenuPositioner();
+      await waitForOverlaySpacerExpanded();
+      providerPickerButton.click();
+      await waitForOverlaySpacerCollapsed();
+
+      const runtimeAccessButton = await waitForElement(
+        () =>
+          Array.from(
+            document.querySelectorAll<HTMLButtonElement>(
+              '[data-chat-composer-footer="true"] button',
+            ),
+          ).find((button) => button.textContent?.includes("Full access")) ?? null,
+        "Unable to find runtime access button.",
+      );
+      runtimeAccessButton.click();
+      await waitForComposerMenuPositioner();
+      await waitForOverlaySpacerExpanded();
+      runtimeAccessButton.click();
+      await waitForOverlaySpacerCollapsed();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("expands and collapses the chat overlay spacer for implementation actions menu", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithActionablePlan(),
+    });
+
+    try {
+      await waitForOverlaySpacer();
+      await waitForOverlaySpacerCollapsed();
+
+      const implementationMenuButton = await waitForElement(
+        () =>
+          document.querySelector<HTMLButtonElement>('button[aria-label="Implementation actions"]'),
+        "Unable to find implementation actions button.",
+      );
+      implementationMenuButton.click();
+      await waitForComposerMenuPositioner();
+      await waitForOverlaySpacerExpanded();
+      implementationMenuButton.click();
+      await waitForOverlaySpacerCollapsed();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("keeps the last timeline message above an open composer overlay", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: "msg-user-last-row-overlay-visibility-test" as MessageId,
+        targetText: "last row overlay visibility test",
+      }),
+    });
+
+    try {
+      const scrollContainer = await waitForMessagesScrollContainer();
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      scrollContainer.dispatchEvent(new Event("scroll"));
+      await waitForLayout();
+
+      const providerPickerButton = await waitForElement(
+        () =>
+          Array.from(
+            document.querySelectorAll<HTMLButtonElement>(
+              '[data-chat-composer-footer="true"] button',
+            ),
+          ).find((button) => button.textContent?.includes("GPT-5")) ?? null,
+        "Unable to find provider/model picker trigger.",
+      );
+      providerPickerButton.click();
+
+      await waitForOverlaySpacerExpanded();
+      await vi.waitFor(
+        () => {
+          const overlay = document.querySelector<HTMLElement>('[data-slot="menu-positioner"]');
+          expect(overlay).toBeTruthy();
+          const messageRows = Array.from(
+            document.querySelectorAll<HTMLElement>("[data-message-id][data-message-role]"),
+          );
+          expect(messageRows.length).toBeGreaterThan(0);
+          const lastRow = messageRows.at(-1);
+          expect(lastRow).toBeTruthy();
+          const lastRowRect = lastRow!.getBoundingClientRect();
+          const overlayRect = overlay!.getBoundingClientRect();
+          expect(lastRowRect.bottom).toBeLessThanOrEqual(overlayRect.top + 1);
         },
         { timeout: 8_000, interval: 16 },
       );

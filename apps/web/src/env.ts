@@ -3,6 +3,4 @@
  */
 export const isElectron =
   typeof window !== "undefined" &&
-  (window.desktopBridge !== undefined ||
-    window.nativeApi !== undefined ||
-    typeof window.__TAURI_INTERNALS__ !== "undefined");
+  (window.desktopBridge !== undefined || window.nativeApi !== undefined);

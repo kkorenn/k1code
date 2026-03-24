@@ -1,9 +1,0 @@
-{
-  "default": {
-    "identifier": "default",
-    "description": "Default capability for the K1 Code desktop window",
-    "local": true,
-    "windows": ["main"],
-    "permissions": ["core:default"]
-  }
-}

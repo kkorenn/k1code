@@ -206,6 +206,11 @@ const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = [];
 const EMPTY_AVAILABLE_EDITORS: EditorId[] = [];
 const EMPTY_PROVIDER_STATUSES: ServerProviderStatus[] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
+const COMPOSER_OVERLAY_INSET_BUFFER_PX = 8;
+const COMPOSER_OVERLAY_INSET_MAX_PX = 320;
+const COMPOSER_OVERLAY_MIN_HORIZONTAL_OVERLAP_PX = 24;
+const COMPOSER_OVERLAY_MAX_BOTTOM_DISTANCE_PX = 72;
+const COMPOSER_OVERLAY_REMEASURE_DELAY_MS = 170;
 const RUNTIME_MODE_LABELS: Record<RuntimeMode, string> = {
   "approval-required": "Supervised",
   "workspace-write": "Workspace access",
@@ -445,6 +450,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isRuntimeAccessMenuOpen, setIsRuntimeAccessMenuOpen] = useState(false);
+  const [composerOverlayInsetPx, setComposerOverlayInsetPx] = useState(0);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -488,7 +494,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const pendingInteractionAnchorFrameRef = useRef<number | null>(null);
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
+  const composerCommandMenuOverlayRef = useRef<HTMLDivElement | null>(null);
   const composerFormHeightRef = useRef(0);
+  const composerOverlayMeasureRafRef = useRef<number | null>(null);
+  const composerOverlayDelayedMeasureTimeoutRef = useRef<number | null>(null);
   const composerImagesRef = useRef<ComposerImageAttachment[]>([]);
   const composerSelectLockRef = useRef(false);
   const composerMenuOpenRef = useRef(false);
@@ -502,6 +511,89 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const setMessagesScrollContainerRef = useCallback((element: HTMLDivElement | null) => {
     messagesScrollRef.current = element;
     setMessagesScrollElement(element);
+  }, []);
+  const computeComposerOverlayInsetPx = useCallback((): number => {
+    const composerForm = composerFormRef.current;
+    if (!composerForm) return 0;
+    const composerRect = composerForm.getBoundingClientRect();
+    if (composerRect.width <= 0 || composerRect.height <= 0) return 0;
+
+    const overlayCandidates = new Set<HTMLElement>();
+    const composerCommandMenuOverlay = composerCommandMenuOverlayRef.current;
+    if (composerCommandMenuOverlay) {
+      overlayCandidates.add(composerCommandMenuOverlay);
+    }
+    for (const menuPositioner of document.querySelectorAll<HTMLElement>(
+      '[data-slot="menu-positioner"]',
+    )) {
+      overlayCandidates.add(menuPositioner);
+    }
+
+    let maxOverlayProtrusion = 0;
+    for (const candidate of overlayCandidates) {
+      if (!candidate.isConnected) continue;
+      const rect = candidate.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      const style = window.getComputedStyle(candidate);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+
+      const horizontalOverlap =
+        Math.min(rect.right, composerRect.right) - Math.max(rect.left, composerRect.left);
+      if (horizontalOverlap < COMPOSER_OVERLAY_MIN_HORIZONTAL_OVERLAP_PX) continue;
+
+      const protrusion = composerRect.top - rect.top;
+      if (protrusion <= 0.5) continue;
+
+      const bottomDistance = composerRect.top - rect.bottom;
+      if (bottomDistance > COMPOSER_OVERLAY_MAX_BOTTOM_DISTANCE_PX) continue;
+
+      maxOverlayProtrusion = Math.max(maxOverlayProtrusion, protrusion);
+    }
+
+    if (maxOverlayProtrusion <= 0) {
+      return 0;
+    }
+
+    return Math.max(
+      0,
+      Math.min(
+        COMPOSER_OVERLAY_INSET_MAX_PX,
+        Math.ceil(maxOverlayProtrusion + COMPOSER_OVERLAY_INSET_BUFFER_PX),
+      ),
+    );
+  }, []);
+  const scheduleComposerOverlayInsetMeasure = useCallback(() => {
+    if (composerOverlayMeasureRafRef.current !== null) return;
+    composerOverlayMeasureRafRef.current = window.requestAnimationFrame(() => {
+      composerOverlayMeasureRafRef.current = null;
+      const nextInset = computeComposerOverlayInsetPx();
+      setComposerOverlayInsetPx((previousInset) =>
+        Math.abs(previousInset - nextInset) < 1 ? previousInset : nextInset,
+      );
+    });
+  }, [computeComposerOverlayInsetPx]);
+  const scheduleDelayedComposerOverlayInsetMeasure = useCallback(() => {
+    const existingTimeout = composerOverlayDelayedMeasureTimeoutRef.current;
+    if (existingTimeout !== null) {
+      window.clearTimeout(existingTimeout);
+    }
+    composerOverlayDelayedMeasureTimeoutRef.current = window.setTimeout(() => {
+      composerOverlayDelayedMeasureTimeoutRef.current = null;
+      scheduleComposerOverlayInsetMeasure();
+    }, COMPOSER_OVERLAY_REMEASURE_DELAY_MS);
+  }, [scheduleComposerOverlayInsetMeasure]);
+  const cancelPendingComposerOverlayInsetMeasure = useCallback(() => {
+    const pendingFrame = composerOverlayMeasureRafRef.current;
+    if (pendingFrame !== null) {
+      composerOverlayMeasureRafRef.current = null;
+      window.cancelAnimationFrame(pendingFrame);
+    }
+    const pendingTimeout = composerOverlayDelayedMeasureTimeoutRef.current;
+    if (pendingTimeout !== null) {
+      composerOverlayDelayedMeasureTimeoutRef.current = null;
+      window.clearTimeout(pendingTimeout);
+    }
   }, []);
 
   const terminalState = useTerminalStateStore((state) =>
@@ -2024,8 +2116,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
     return () => {
       cancelPendingStickToBottom();
       cancelPendingInteractionAnchorAdjustment();
+      cancelPendingComposerOverlayInsetMeasure();
     };
-  }, [cancelPendingInteractionAnchorAdjustment, cancelPendingStickToBottom]);
+  }, [
+    cancelPendingComposerOverlayInsetMeasure,
+    cancelPendingInteractionAnchorAdjustment,
+    cancelPendingStickToBottom,
+  ]);
   useLayoutEffect(() => {
     if (!activeThread?.id) return;
     shouldAutoScrollRef.current = true;
@@ -2046,6 +2143,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     const measureComposerFormWidth = () => composerForm.clientWidth;
 
     composerFormHeightRef.current = composerForm.getBoundingClientRect().height;
+    scheduleComposerOverlayInsetMeasure();
     setIsComposerFooterCompact(
       shouldUseCompactComposerFooter(measureComposerFormWidth(), {
         hasWideActions: composerFooterHasWideActions,
@@ -2061,6 +2159,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
         hasWideActions: composerFooterHasWideActions,
       });
       setIsComposerFooterCompact((previous) => (previous === nextCompact ? previous : nextCompact));
+      scheduleComposerOverlayInsetMeasure();
 
       const nextHeight = entry.contentRect.height;
       const previousHeight = composerFormHeightRef.current;
@@ -2075,7 +2174,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     return () => {
       observer.disconnect();
     };
-  }, [activeThread?.id, composerFooterHasWideActions, scheduleStickToBottom]);
+  }, [
+    activeThread?.id,
+    composerFooterHasWideActions,
+    scheduleComposerOverlayInsetMeasure,
+    scheduleStickToBottom,
+  ]);
   useEffect(() => {
     if (!shouldAutoScrollRef.current) return;
     scheduleStickToBottom();
@@ -2085,6 +2189,52 @@ export default function ChatView({ threadId }: ChatViewProps) {
     if (!shouldAutoScrollRef.current) return;
     scheduleStickToBottom();
   }, [phase, scheduleStickToBottom, timelineEntries]);
+  useEffect(() => {
+    if (!shouldAutoScrollRef.current) return;
+    scheduleStickToBottom();
+  }, [composerOverlayInsetPx, scheduleStickToBottom]);
+  useEffect(() => {
+    scheduleComposerOverlayInsetMeasure();
+    scheduleDelayedComposerOverlayInsetMeasure();
+  }, [
+    activeThread?.id,
+    composerMenuOpen,
+    isRuntimeAccessMenuOpen,
+    scheduleComposerOverlayInsetMeasure,
+    scheduleDelayedComposerOverlayInsetMeasure,
+  ]);
+  useEffect(() => {
+    const handleWindowResize = () => {
+      scheduleComposerOverlayInsetMeasure();
+      scheduleDelayedComposerOverlayInsetMeasure();
+    };
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, [scheduleComposerOverlayInsetMeasure, scheduleDelayedComposerOverlayInsetMeasure]);
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") {
+      return;
+    }
+    const mutationTarget = document.body;
+    if (!mutationTarget) {
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      scheduleComposerOverlayInsetMeasure();
+      scheduleDelayedComposerOverlayInsetMeasure();
+    });
+    observer.observe(mutationTarget, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "hidden", "data-side"],
+    });
+    return () => {
+      observer.disconnect();
+    };
+  }, [scheduleComposerOverlayInsetMeasure, scheduleDelayedComposerOverlayInsetMeasure]);
 
   useEffect(() => {
     setExpandedWorkGroups({});
@@ -3860,6 +4010,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 timestampFormat={timestampFormat}
                 workspaceRoot={activeProject?.cwd ?? undefined}
               />
+              <div
+                data-chat-overlay-spacer="true"
+                aria-hidden="true"
+                className="pointer-events-none w-full shrink-0 transition-[height] duration-200 ease-out"
+                style={{ height: composerOverlayInsetPx }}
+              />
             </div>
 
             {/* scroll to bottom pill — shown when user has scrolled away from the bottom */}
@@ -3944,7 +4100,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
                     )}
                   >
                     {composerMenuOpen && !isComposerApprovalState && (
-                      <div className="absolute inset-x-0 bottom-full z-20 mb-2 px-1">
+                      <div
+                        ref={composerCommandMenuOverlayRef}
+                        data-chat-composer-overlay="command-menu"
+                        className="absolute inset-x-0 bottom-full z-20 mb-2 px-1"
+                      >
                         <ComposerCommandMenu
                           items={composerMenuItems}
                           resolvedTheme={resolvedTheme}

@@ -11,8 +11,7 @@
     "K1CODE_NO_BROWSER",
     "K1CODE_HOME",
     "K1CODE_AUTH_TOKEN",
-    "K1CODE_DESKTOP_WS_URL",
-    "K1CODE_TAURI_NODE_PATH"
+    "K1CODE_DESKTOP_WS_URL"
   ],
   "tasks": {
     "build": {

@@ -376,6 +376,10 @@ function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
   );
 }
 
+function normalizeDraftPrompt(prompt: string): string {
+  return prompt.trim().length === 0 ? "" : prompt;
+}
+
 function normalizeDeferredPlanImplementation(
   value: unknown,
 ): ComposerThreadDraftState["deferredPlanImplementation"] {
@@ -715,6 +719,7 @@ function normalizePersistedDraftsByThreadId(
       | PersistedComposerThreadDraftState
       | LegacyPersistedCodexThreadDraftState;
     const promptCandidate = typeof draftCandidate.prompt === "string" ? draftCandidate.prompt : "";
+    const normalizedPromptCandidate = normalizeDraftPrompt(promptCandidate);
     const attachments = Array.isArray(draftCandidate.attachments)
       ? draftCandidate.attachments.flatMap((entry) => {
           const normalized = normalizePersistedAttachment(entry);
@@ -742,11 +747,11 @@ function normalizePersistedDraftsByThreadId(
       draftCandidate.deferredPlanImplementation,
     );
     const prompt = ensureInlineTerminalContextPlaceholders(
-      promptCandidate,
+      normalizedPromptCandidate,
       terminalContexts.length,
     );
     if (
-      promptCandidate.length === 0 &&
+      normalizedPromptCandidate.length === 0 &&
       attachments.length === 0 &&
       terminalContexts.length === 0 &&
       !provider &&
@@ -1336,11 +1341,12 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         if (threadId.length === 0) {
           return;
         }
+        const normalizedPrompt = normalizeDraftPrompt(prompt);
         set((state) => {
           const existing = state.draftsByThreadId[threadId] ?? createEmptyThreadDraft();
           const nextDraft: ComposerThreadDraftState = {
             ...existing,
-            prompt,
+            prompt: normalizedPrompt,
           };
           const nextDraftsByThreadId = { ...state.draftsByThreadId };
           if (shouldRemoveDraft(nextDraft)) {

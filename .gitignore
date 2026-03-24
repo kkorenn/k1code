@@ -20,4 +20,3 @@ apps/web/src/components/__screenshots__
 .vitest-*
 __screenshots__/
 .tanstack
-apps/*/src-tauri/target

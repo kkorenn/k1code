@@ -1037,6 +1037,51 @@ describe("composerDraftStore deferred plan implementation", () => {
   });
 });
 
+describe("composerDraftStore prompt normalization", () => {
+  const threadId = ThreadId.makeUnsafe("thread-prompt-normalization");
+
+  beforeEach(() => {
+    resetComposerDraftStore();
+  });
+
+  it("drops whitespace-only prompts", () => {
+    const store = useComposerDraftStore.getState();
+
+    store.setPrompt(threadId, "\n  \t\r");
+
+    expect(useComposerDraftStore.getState().draftsByThreadId[threadId]).toBeUndefined();
+  });
+
+  it("normalizes whitespace-only prompts during persisted merge", () => {
+    const persistApi = useComposerDraftStore.persist as unknown as {
+      getOptions: () => {
+        merge: (
+          persistedState: unknown,
+          currentState: ReturnType<typeof useComposerDraftStore.getState>,
+        ) => ReturnType<typeof useComposerDraftStore.getState>;
+      };
+    };
+
+    const mergedState = persistApi.getOptions().merge(
+      {
+        draftsByThreadId: {
+          [threadId]: {
+            prompt: "\n\t  ",
+            attachments: [],
+          },
+        },
+        draftThreadsByThreadId: {},
+        projectDraftThreadIdByProjectId: {},
+        stickyModel: null,
+        stickyModelOptions: {},
+      },
+      useComposerDraftStore.getInitialState(),
+    );
+
+    expect(mergedState.draftsByThreadId[threadId]).toBeUndefined();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // createDebouncedStorage
 // ---------------------------------------------------------------------------
