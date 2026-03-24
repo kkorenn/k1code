@@ -1,7 +1,14 @@
-import { ArchiveIcon, ChevronDownIcon, FolderIcon, PlusIcon, Undo2Icon, XIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveXIcon,
+  ChevronDownIcon,
+  FolderIcon,
+  PlusIcon,
+  Undo2Icon,
+  XIcon,
+} from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL, ThreadId } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 
 import {
@@ -893,7 +900,6 @@ export function AdvancedSettingsPanel() {
 export function ArchivedThreadsPanel() {
   const projects = useStore((store) => store.projects);
   const threads = useStore((store) => store.threads);
-  const navigate = useNavigate();
   const { unarchiveThread, confirmAndDeleteThread } = useThreadActions();
 
   const archivedGroups = useMemo(() => {
@@ -969,16 +975,9 @@ export function ArchivedThreadsPanel() {
                 </div>
                 <div className="space-y-2">
                   {projectThreads.map((thread) => (
-                    <button
+                    <div
                       key={thread.id}
-                      type="button"
-                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/70 px-3 py-3 text-left transition-colors hover:bg-accent"
-                      onClick={() =>
-                        void navigate({
-                          to: "/$threadId",
-                          params: { threadId: thread.id },
-                        })
-                      }
+                      className="group relative flex w-full items-center justify-between gap-3 rounded-xl border border-border/70 px-3 py-3 text-left transition-colors hover:bg-accent"
                       onContextMenu={(event) => {
                         event.preventDefault();
                         void handleArchivedThreadContextMenu(thread.id, {
@@ -995,10 +994,31 @@ export function ArchivedThreadsPanel() {
                           Archived {formatRelativeTime(thread.archivedAt ?? thread.createdAt)}
                         </div>
                       </div>
-                      <div className="shrink-0 text-[11px] text-muted-foreground/70">
-                        {formatRelativeTime(thread.createdAt)}
+                      <div className="relative shrink-0 pl-3">
+                        <div className="text-[11px] text-muted-foreground/70 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
+                          {formatRelativeTime(thread.createdAt)}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="absolute inset-y-1/2 right-0 h-8 -translate-y-1/2 rounded-lg px-2.5 text-xs font-medium opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                          onClick={() =>
+                            void unarchiveThread(thread.id).catch((error) => {
+                              toastManager.add({
+                                type: "error",
+                                title: "Failed to unarchive thread",
+                                description:
+                                  error instanceof Error ? error.message : "An error occurred.",
+                              });
+                            })
+                          }
+                        >
+                          <ArchiveXIcon className="size-3.5" />
+                          <span>Unarchive</span>
+                        </Button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </section>
@@ -1008,8 +1028,4 @@ export function ArchivedThreadsPanel() {
       </SettingsSection>
     </SettingsPageContainer>
   );
-}
-
-export function AboutSettingsPanel() {
-  return <SettingsPageContainer>{null}</SettingsPageContainer>;
 }

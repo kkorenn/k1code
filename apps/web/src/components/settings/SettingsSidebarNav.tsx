@@ -1,12 +1,5 @@
 import type { ComponentType } from "react";
-import {
-  ArchiveIcon,
-  ArrowLeftIcon,
-  CogIcon,
-  CpuIcon,
-  InfoIcon,
-  Settings2Icon,
-} from "lucide-react";
+import { ArchiveIcon, ArrowLeftIcon, CogIcon, CpuIcon, Settings2Icon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 
 import {
@@ -23,8 +16,7 @@ export type SettingsSectionPath =
   | "/settings/general"
   | "/settings/models"
   | "/settings/advanced"
-  | "/settings/archived"
-  | "/settings/about";
+  | "/settings/archived";
 
 const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   label: string;
@@ -35,7 +27,6 @@ const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Models", to: "/settings/models", icon: CpuIcon },
   { label: "Advanced", to: "/settings/advanced", icon: CogIcon },
   { label: "Archived Threads", to: "/settings/archived", icon: ArchiveIcon },
-  { label: "About", to: "/settings/about", icon: InfoIcon },
 ];
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
