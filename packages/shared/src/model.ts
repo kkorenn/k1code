@@ -26,6 +26,20 @@ const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> =
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
 const CLAUDE_SONNET_4_6_MODEL = "claude-sonnet-4-6";
 const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
+const PROVIDER_INFERENCE_MATCH_ORDER = [
+  "gemini",
+  "cursor",
+  "openCode",
+  "claudeAgent",
+  "codex",
+] as const satisfies ReadonlyArray<ProviderKind>;
+const PROVIDER_INFERENCE_AMBIGUITY_PRIORITY = [
+  "claudeAgent",
+  "codex",
+  "openCode",
+  "gemini",
+  "cursor",
+] as const satisfies ReadonlyArray<ProviderKind>;
 
 export interface SelectableModelOption {
   slug: string;
@@ -246,7 +260,7 @@ export function inferProviderForModel(
   fallback: ProviderKind = "codex",
 ): ProviderKind {
   const providerMatches: ProviderKind[] = [];
-  for (const provider of ["gemini", "cursor", "openCode", "claudeAgent", "codex"] as const) {
+  for (const provider of PROVIDER_INFERENCE_MATCH_ORDER) {
     const normalized = normalizeModelSlug(model, provider);
     if (normalized && MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized)) {
       providerMatches.push(provider);
@@ -259,6 +273,11 @@ export function inferProviderForModel(
   if (providerMatches.length > 1) {
     if (providerMatches.includes(fallback)) {
       return fallback;
+    }
+    for (const provider of PROVIDER_INFERENCE_AMBIGUITY_PRIORITY) {
+      if (providerMatches.includes(provider)) {
+        return provider;
+      }
     }
     return providerMatches[0]!;
   }
