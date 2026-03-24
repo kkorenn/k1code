@@ -1,5 +1,5 @@
 import { type ProjectEntry, type ModelSlug, type ProviderKind } from "@t3tools/contracts";
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { BotIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -82,8 +82,17 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   isActive: boolean;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (props.isActive) {
+      ref.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [props.isActive]);
+
   return (
     <CommandItem
+      ref={ref}
       value={props.item.id}
       className={cn(
         "cursor-pointer select-none gap-2",
