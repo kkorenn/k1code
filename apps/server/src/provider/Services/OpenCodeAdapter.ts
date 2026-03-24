@@ -23,5 +23,5 @@ export interface OpenCodeAdapterShape extends ProviderAdapterShape<ProviderAdapt
  * OpenCodeAdapter - Service tag for OpenCode provider adapter operations.
  */
 export class OpenCodeAdapter extends ServiceMap.Service<OpenCodeAdapter, OpenCodeAdapterShape>()(
-  "t3/provider/Services/OpenCodeAdapter",
+  "k1/provider/Services/OpenCodeAdapter",
 ) {}

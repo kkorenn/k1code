@@ -75,7 +75,7 @@ function assertContains(haystack: string, needle: string, message: string): void
   }
 }
 
-const tempRoot = mkdtempSync(join(tmpdir(), "t3-release-smoke-"));
+const tempRoot = mkdtempSync(join(tmpdir(), "k1-release-smoke-"));
 
 try {
   copyWorkspaceManifestFixture(tempRoot);

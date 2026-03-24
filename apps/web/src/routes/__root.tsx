@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@k1tools/contracts";
 import {
   Outlet,
   createRootRouteWithContext,

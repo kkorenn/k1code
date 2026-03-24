@@ -449,7 +449,7 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   signed: boolean,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.k1code",
+    appId: "com.k1tools.k1code",
     productName,
     artifactName: "K1-Code-${version}-${arch}.${ext}",
     directories: {
@@ -624,7 +624,7 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     k1codeCommitHash: commitHash,
     private: true,
     description: "K1 Code desktop build",
-    author: "T3 Tools",
+    author: "K1 Tools",
     main: "apps/desktop/dist-electron/main.js",
     build: yield* createBuildConfig(
       options.platform,

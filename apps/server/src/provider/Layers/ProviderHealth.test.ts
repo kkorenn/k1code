@@ -69,7 +69,7 @@ function withTempCodexHome(configContent?: string) {
   return Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-test-codex-" });
+    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "k1-test-codex-" });
 
     yield* Effect.acquireRelease(
       Effect.sync(() => {
@@ -107,7 +107,7 @@ function withTempGeminiHome(options?: {
   return Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-test-gemini-" });
+    const tmpDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "k1-test-gemini-" });
 
     yield* Effect.acquireRelease(
       Effect.sync(() => {

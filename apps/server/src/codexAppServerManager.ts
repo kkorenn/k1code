@@ -18,8 +18,8 @@ import {
   type ProviderTurnStartResult,
   RuntimeMode,
   ProviderInteractionMode,
-} from "@t3tools/contracts";
-import { normalizeModelSlug } from "@t3tools/shared/model";
+} from "@k1tools/contracts";
+import { normalizeModelSlug } from "@k1tools/shared/model";
 import { Effect, ServiceMap } from "effect";
 
 import {

@@ -1,4 +1,4 @@
-import { WS_CHANNELS } from "@t3tools/contracts";
+import { WS_CHANNELS } from "@k1tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WsTransport } from "./wsTransport";

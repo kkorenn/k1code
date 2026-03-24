@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopBridge } from "@k1tools/contracts";
 
 const PICK_FOLDER_CHANNEL = "desktop:pick-folder";
 const GET_DOCUMENTS_PATH_CHANNEL = "desktop:get-documents-path";

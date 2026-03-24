@@ -1,5 +1,5 @@
-import { type ModelSlug, type ProviderKind } from "@t3tools/contracts";
-import { resolveSelectableModel } from "@t3tools/shared/model";
+import { type ModelSlug, type ProviderKind } from "@k1tools/contracts";
+import { resolveSelectableModel } from "@k1tools/shared/model";
 import { memo, useState } from "react";
 import { type ProviderPickerKind, PROVIDER_OPTIONS } from "../../session-logic";
 import { ChevronDownIcon } from "lucide-react";
@@ -114,7 +114,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             )}
           />
           <span className="min-w-0 flex-1 truncate">{selectedModelLabel}</span>
-          <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={cn(
+              "size-3 shrink-0 opacity-60 transition-transform duration-200 ease-out",
+              isMenuOpen ? "rotate-180" : "rotate-0",
+            )}
+          />
         </span>
       </MenuTrigger>
       <MenuPopup align="start">

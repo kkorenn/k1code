@@ -37,7 +37,7 @@ import {
   ThreadId,
   TurnId,
   type UserInputQuestion,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import {
   applyClaudePromptEffortPrefix,
   getEffectiveClaudeCodeEffort,
@@ -46,7 +46,7 @@ import {
   supportsClaudeFastMode,
   supportsClaudeThinkingToggle,
   supportsClaudeUltrathinkKeyword,
-} from "@t3tools/shared/model";
+} from "@k1tools/shared/model";
 import {
   Cause,
   DateTime,

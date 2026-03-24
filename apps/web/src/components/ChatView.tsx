@@ -20,13 +20,13 @@ import {
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   RuntimeMode,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import {
   applyClaudePromptEffortPrefix,
   getDefaultModel,
   normalizeModelSlug,
   resolveModelSlugForProvider,
-} from "@t3tools/shared/model";
+} from "@k1tools/shared/model";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
@@ -440,6 +440,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
+  const [isRuntimeAccessMenuOpen, setIsRuntimeAccessMenuOpen] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -4119,7 +4120,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               className="mx-0.5 hidden h-4 sm:block"
                             />
 
-                            <Menu>
+                            <Menu
+                              open={isRuntimeAccessMenuOpen}
+                              onOpenChange={setIsRuntimeAccessMenuOpen}
+                            >
                               <MenuTrigger
                                 render={
                                   <Button
@@ -4141,7 +4145,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                 <span className="sr-only sm:not-sr-only">
                                   {runtimeModeLabel(runtimeMode)}
                                 </span>
-                                <ChevronDownIcon className="size-3 text-muted-foreground/70" />
+                                <ChevronDownIcon
+                                  className={cn(
+                                    "size-3 text-muted-foreground/70 transition-transform duration-200 ease-out",
+                                    isRuntimeAccessMenuOpen ? "rotate-180" : "rotate-0",
+                                  )}
+                                />
                               </MenuTrigger>
                               <MenuPopup align="start">
                                 <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">

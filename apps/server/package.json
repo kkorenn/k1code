@@ -1,6 +1,6 @@
 {
-  "name": "t3",
-  "version": "0.0.18",
+  "name": "k1",
+  "version": "0.1.8",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -8,7 +8,7 @@
     "directory": "apps/server"
   },
   "bin": {
-    "t3": "./dist/index.mjs"
+    "k1": "./dist/index.mjs"
   },
   "files": [
     "dist"
@@ -35,9 +35,9 @@
   "devDependencies": {
     "@effect/language-service": "catalog:",
     "@effect/vitest": "catalog:",
-    "@t3tools/contracts": "workspace:*",
-    "@t3tools/shared": "workspace:*",
-    "@t3tools/web": "workspace:*",
+    "@k1tools/contracts": "workspace:*",
+    "@k1tools/shared": "workspace:*",
+    "@k1tools/web": "workspace:*",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/ws": "^8.5.13",

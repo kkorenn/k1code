@@ -1,4 +1,4 @@
-import { ProjectId, type ThreadId } from "@t3tools/contracts";
+import { ProjectId, type ThreadId } from "@k1tools/contracts";
 import { type ChatMessage, type Thread } from "../types";
 import { randomUUID } from "~/lib/utils";
 import { type ComposerImageAttachment, type DraftThreadState } from "../composerDraftStore";

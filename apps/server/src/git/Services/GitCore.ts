@@ -20,7 +20,7 @@ import type {
   GitRemoveWorktreeInput,
   GitStatusInput,
   GitStatusResult,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 
 import type { GitCommandError } from "../Errors.ts";
 
@@ -242,5 +242,5 @@ export interface GitCoreShape {
  * GitCore - Service tag for low-level Git repository operations.
  */
 export class GitCore extends ServiceMap.Service<GitCore, GitCoreShape>()(
-  "t3/git/Services/GitCore",
+  "k1/git/Services/GitCore",
 ) {}

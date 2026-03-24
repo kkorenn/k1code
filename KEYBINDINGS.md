@@ -2,7 +2,7 @@
 
 K1 Code reads keybindings from:
 
-- `~/.t3/keybindings.json`
+- `~/.k1/keybindings.json`
 
 The file must be a JSON array of rules:
 

@@ -6,7 +6,7 @@ import {
   MODEL_OPTIONS,
   MODEL_OPTIONS_BY_PROVIDER,
   REASONING_EFFORT_OPTIONS_BY_PROVIDER,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 
 import {
   applyClaudePromptEffortPrefix,
@@ -209,6 +209,12 @@ describe("inferProviderForModel", () => {
     expect(inferProviderForModel("gpt-5.3-codex")).toBe("codex");
     expect(inferProviderForModel("claude-sonnet-4-6")).toBe("claudeAgent");
     expect(inferProviderForModel("sonnet")).toBe("claudeAgent");
+  });
+
+  it("prefers the fallback provider for ambiguous slugs", () => {
+    expect(inferProviderForModel("gpt-5.4")).toBe("codex");
+    expect(inferProviderForModel("gpt-5.4", "openCode")).toBe("openCode");
+    expect(inferProviderForModel("gpt-5.3-codex", "openCode")).toBe("openCode");
   });
 
   it("falls back when the model is unknown", () => {

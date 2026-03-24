@@ -13,7 +13,7 @@ import {
   type ModelSlug,
   type ProviderReasoningEffort,
   type ProviderKind,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 
 const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
   claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
@@ -245,29 +245,22 @@ export function inferProviderForModel(
   model: string | null | undefined,
   fallback: ProviderKind = "codex",
 ): ProviderKind {
-  const normalizedGemini = normalizeModelSlug(model, "gemini");
-  if (normalizedGemini && MODEL_SLUG_SET_BY_PROVIDER.gemini.has(normalizedGemini)) {
-    return "gemini";
+  const providerMatches: ProviderKind[] = [];
+  for (const provider of ["gemini", "cursor", "openCode", "claudeAgent", "codex"] as const) {
+    const normalized = normalizeModelSlug(model, provider);
+    if (normalized && MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized)) {
+      providerMatches.push(provider);
+    }
   }
 
-  const normalizedCursor = normalizeModelSlug(model, "cursor");
-  if (normalizedCursor && MODEL_SLUG_SET_BY_PROVIDER.cursor.has(normalizedCursor)) {
-    return "cursor";
+  if (providerMatches.length === 1) {
+    return providerMatches[0]!;
   }
-
-  const normalizedOpenCode = normalizeModelSlug(model, "openCode");
-  if (normalizedOpenCode && MODEL_SLUG_SET_BY_PROVIDER.openCode.has(normalizedOpenCode)) {
-    return "openCode";
-  }
-
-  const normalizedClaude = normalizeModelSlug(model, "claudeAgent");
-  if (normalizedClaude && MODEL_SLUG_SET_BY_PROVIDER.claudeAgent.has(normalizedClaude)) {
-    return "claudeAgent";
-  }
-
-  const normalizedCodex = normalizeModelSlug(model, "codex");
-  if (normalizedCodex && MODEL_SLUG_SET_BY_PROVIDER.codex.has(normalizedCodex)) {
-    return "codex";
+  if (providerMatches.length > 1) {
+    if (providerMatches.includes(fallback)) {
+      return fallback;
+    }
+    return providerMatches[0]!;
   }
 
   if (typeof model !== "string") {

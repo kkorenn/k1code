@@ -1,4 +1,4 @@
-import { type ProjectEntry, type ModelSlug, type ProviderKind } from "@t3tools/contracts";
+import { type ProjectEntry, type ModelSlug, type ProviderKind } from "@k1tools/contracts";
 import { memo, useEffect, useRef } from "react";
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { BotIcon } from "lucide-react";

@@ -8,7 +8,7 @@
  */
 import { Config, Data, Effect, FileSystem, Layer, Option, Path, Schema, ServiceMap } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { NetService } from "@t3tools/shared/Net";
+import { NetService } from "@k1tools/shared/Net";
 import {
   DEFAULT_PORT,
   deriveServerPaths,
@@ -37,7 +37,7 @@ interface CliInput {
   readonly mode: Option.Option<RuntimeMode>;
   readonly port: Option.Option<number>;
   readonly host: Option.Option<string>;
-  readonly t3Home: Option.Option<string>;
+  readonly k1Home: Option.Option<string>;
   readonly devUrl: Option.Option<URL>;
   readonly noBrowser: Option.Option<boolean>;
   readonly authToken: Option.Option<string>;
@@ -69,7 +69,7 @@ export interface CliConfigShape {
  * CliConfig - Service tag for startup CLI/runtime helpers.
  */
 export class CliConfig extends ServiceMap.Service<CliConfig, CliConfigShape>()(
-  "t3/main/CliConfig",
+  "k1/main/CliConfig",
 ) {
   static readonly layer = Layer.effect(
     CliConfig,
@@ -100,7 +100,7 @@ const CliEnvConfig = Config.all({
   ),
   port: Config.port("K1CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
   host: Config.string("K1CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
-  t3Home: Config.string("K1CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  k1Home: Config.string("K1CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
   noBrowser: Config.boolean("K1CODE_NO_BROWSER").pipe(
     Config.option,
@@ -152,7 +152,7 @@ const ServerConfigLive = (input: CliInput) =>
       });
 
       const devUrl = Option.getOrElse(input.devUrl, () => env.devUrl);
-      const baseDir = yield* resolveBaseDir(Option.getOrUndefined(input.t3Home) ?? env.t3Home);
+      const baseDir = yield* resolveBaseDir(Option.getOrUndefined(input.k1Home) ?? env.k1Home);
       const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
       const noBrowser = resolveBooleanFlag(input.noBrowser, env.noBrowser ?? mode === "desktop");
       const authToken = Option.getOrUndefined(input.authToken) ?? env.authToken;
@@ -295,7 +295,7 @@ const hostFlag = Flag.string("host").pipe(
   Flag.withDescription("Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a Tailnet IP)."),
   Flag.optional,
 );
-const t3HomeFlag = Flag.string("home-dir").pipe(
+const k1HomeFlag = Flag.string("home-dir").pipe(
   Flag.withDescription("Base directory for all K1 Code data (equivalent to K1CODE_HOME)."),
   Flag.optional,
 );
@@ -327,11 +327,11 @@ const logWebSocketEventsFlag = Flag.boolean("log-websocket-events").pipe(
   Flag.optional,
 );
 
-export const t3Cli = Command.make("t3", {
+export const k1Cli = Command.make("k1", {
   mode: modeFlag,
   port: portFlag,
   host: hostFlag,
-  t3Home: t3HomeFlag,
+  k1Home: k1HomeFlag,
   devUrl: devUrlFlag,
   noBrowser: noBrowserFlag,
   authToken: authTokenFlag,

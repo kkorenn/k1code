@@ -35,12 +35,12 @@ import {
   ThreadId,
   type GitStatusResult,
   type ResolvedKeybindingsConfig,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
-import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
+import { APP_STAGE_BADGE_LABEL, APP_VERSION } from "../branding";
 import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import { useStore } from "../store";
 import { shortcutLabelForCommand } from "../keybindings";
@@ -1300,7 +1300,7 @@ export default function Sidebar() {
                 Code
               </span>
               <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
-                {APP_STAGE_LABEL}
+                {APP_STAGE_BADGE_LABEL}
               </span>
             </div>
           }
@@ -1880,7 +1880,7 @@ export default function Sidebar() {
           <DialogHeader>
             <DialogTitle>Create new empty directory</DialogTitle>
             <DialogDescription>
-              Choose where the new folder should live, then name the project and T3 Code will open
+              Choose where the new folder should live, then name the project and K1 Code will open
               it right away.
             </DialogDescription>
           </DialogHeader>

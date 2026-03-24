@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { type OrchestrationProposedPlanId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { type OrchestrationProposedPlanId, ProjectId, ThreadId } from "@k1tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

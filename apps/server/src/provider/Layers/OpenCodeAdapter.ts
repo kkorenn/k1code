@@ -18,7 +18,7 @@ import {
   ThreadId,
   TurnId,
   type ChatAttachment,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";

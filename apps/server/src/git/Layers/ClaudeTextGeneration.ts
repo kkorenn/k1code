@@ -10,8 +10,8 @@
 import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-import { DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER } from "@t3tools/contracts";
-import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shared/git";
+import { DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER } from "@k1tools/contracts";
+import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@k1tools/shared/git";
 
 import { TextGenerationError } from "../Errors.ts";
 import {

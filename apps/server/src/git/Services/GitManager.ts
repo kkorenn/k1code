@@ -15,7 +15,7 @@ import {
   GitRunStackedActionResult,
   GitStatusInput,
   GitStatusResult,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
 import type { GitManagerServiceError } from "../Errors.ts";
@@ -58,5 +58,5 @@ export interface GitManagerShape {
  * GitManager - Service tag for stacked Git workflow orchestration.
  */
 export class GitManager extends ServiceMap.Service<GitManager, GitManagerShape>()(
-  "t3/git/Services/GitManager",
+  "k1/git/Services/GitManager",
 ) {}

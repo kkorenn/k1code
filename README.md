@@ -1,6 +1,6 @@
 # K1 Code
 
-K1 Code is a fork of T3 Code which is a minimal web GUI for coding agents (currently Codex, Claude and Gemini, more coming soon).
+K1 Code is a fork of K1 Code which is a minimal web GUI for coding agents (currently Codex, Claude and Gemini, more coming soon).
 
 ## How to use
 

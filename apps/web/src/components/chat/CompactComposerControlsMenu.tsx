@@ -1,5 +1,5 @@
-import { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
-import { memo, type ReactNode } from "react";
+import { ProviderInteractionMode, RuntimeMode } from "@k1tools/contracts";
+import { memo, type ReactNode, useState } from "react";
 import { EllipsisIcon, ListTodoIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import {
@@ -22,6 +22,8 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   onTogglePlanSidebar: () => void;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const handleRuntimeModeChange = (value: string) => {
     if (value !== "approval-required" && value !== "workspace-write" && value !== "full-access") {
       return;
@@ -33,7 +35,7 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
   };
 
   return (
-    <Menu>
+    <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
       <MenuTrigger
         render={
           <Button
@@ -44,7 +46,12 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
           />
         }
       >
-        <EllipsisIcon aria-hidden="true" className="size-4" />
+        <EllipsisIcon
+          aria-hidden="true"
+          className={`size-4 transition-transform duration-200 ease-out ${
+            isMenuOpen ? "rotate-90" : "rotate-0"
+          }`}
+        />
       </MenuTrigger>
       <MenuPopup align="start">
         {props.traitsMenuContent ? (

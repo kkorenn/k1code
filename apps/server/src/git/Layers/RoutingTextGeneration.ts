@@ -24,11 +24,11 @@ import { ClaudeTextGenerationLive } from "./ClaudeTextGeneration.ts";
 // ---------------------------------------------------------------------------
 
 class CodexTextGen extends ServiceMap.Service<CodexTextGen, TextGenerationShape>()(
-  "t3/git/Layers/RoutingTextGeneration/CodexTextGen",
+  "k1/git/Layers/RoutingTextGeneration/CodexTextGen",
 ) {}
 
 class ClaudeTextGen extends ServiceMap.Service<ClaudeTextGen, TextGenerationShape>()(
-  "t3/git/Layers/RoutingTextGeneration/ClaudeTextGen",
+  "k1/git/Layers/RoutingTextGeneration/ClaudeTextGen",
 ) {}
 
 // Gemini/Cursor/OpenCode git text-generation providers currently reuse Codex

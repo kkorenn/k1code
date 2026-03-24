@@ -1,6 +1,6 @@
 import "../../index.css";
 
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@k1tools/contracts";
 import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-react";

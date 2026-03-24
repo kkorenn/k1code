@@ -5,8 +5,8 @@ import {
   type ModelSlug,
   type ProviderKind,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
-} from "@t3tools/contracts";
-import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
+} from "@k1tools/contracts";
+import { getModelOptions, normalizeModelSlug } from "@k1tools/shared/model";
 import {
   getCustomModelOptionsByProvider,
   getCustomModelsForProvider,

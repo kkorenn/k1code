@@ -1,6 +1,6 @@
 {
-  "name": "@t3tools/desktop",
-  "version": "0.0.18",
+  "name": "@k1tools/desktop",
+  "version": "0.1.8",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -19,13 +19,13 @@
     "electron-updater": "^6.6.2"
   },
   "devDependencies": {
-    "@t3tools/contracts": "workspace:*",
-    "@t3tools/shared": "workspace:*",
+    "@k1tools/contracts": "workspace:*",
+    "@k1tools/shared": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wait-on": "^8.0.2"
   },
-  "productName": "K1 Code (Alpha)"
+  "productName": "K1 Code"
 }

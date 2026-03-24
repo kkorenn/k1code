@@ -1,4 +1,4 @@
-import { readEnvironmentFromLoginShell, ShellEnvironmentReader } from "@t3tools/shared/shell";
+import { readEnvironmentFromLoginShell, ShellEnvironmentReader } from "@k1tools/shared/shell";
 
 export function syncShellEnvironment(
   env: NodeJS.ProcessEnv = process.env,

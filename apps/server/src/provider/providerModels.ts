@@ -6,8 +6,8 @@ import type {
   ProviderKind,
   ProviderModelOption,
   ProviderModelOptionsByProvider,
-} from "@t3tools/contracts";
-import { formatModelDisplayName } from "@t3tools/shared/model";
+} from "@k1tools/contracts";
+import { formatModelDisplayName } from "@k1tools/shared/model";
 
 import { buildCodexInitializeParams } from "../codexAppServerManager";
 
@@ -17,7 +17,10 @@ const MODEL_CACHE_TTL_MS = 60_000;
 
 const GEMINI_MODEL_SLUG_PATTERN = /\bgemini-[a-z0-9]+(?:[.-][a-z0-9]+)+\b/gi;
 const CLAUDE_MODEL_SLUG_PATTERN = /\bclaude-[a-z0-9]+(?:-[a-z0-9]+)+\b/gi;
-const OPENCODE_MODEL_SLUG_PATTERN = /\b[a-z0-9]+\/[a-z0-9]+(?:[.-][a-z0-9]+)+\b/gi;
+const OPENCODE_MODEL_SLUG_PATTERN = /\b[a-z0-9][a-z0-9_-]*\/[a-z0-9][a-z0-9._:-]*[a-z0-9]\b/gi;
+const PROVIDER_SCOPED_MODEL_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]*\/[a-z0-9][a-z0-9._:-]*[a-z0-9]$/i;
+const DASHED_MODEL_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]*-[a-z0-9][a-z0-9._-]*$/i;
+const O_SERIES_MODEL_PATTERN = /^o(?:1|3|4)(?:$|[.-][a-z0-9][a-z0-9._-]*)/i;
 
 let cachedProviderModels: ProviderModelOptionsByProvider | null = null;
 let cachedProviderModelsAt = 0;
@@ -29,6 +32,28 @@ interface CommandResult {
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
 }
+
+interface ModelDiscoveryCommand {
+  readonly binary: string;
+  readonly args: ReadonlyArray<string>;
+  readonly timeoutMs?: number;
+}
+
+const CURSOR_MODEL_DISCOVERY_COMMANDS: ReadonlyArray<ModelDiscoveryCommand> = [
+  { binary: "agent", args: ["models"] },
+  { binary: "agent", args: ["--list-models"] },
+  { binary: "cursor-agent", args: ["models"] },
+  { binary: "cursor-agent", args: ["--list-models"] },
+  { binary: "cursor-agent", args: ["-p", "/models", "--force", "--output-format", "text"] },
+  { binary: "cursor-agent", args: ["-p", "/model", "--force", "--output-format", "text"] },
+];
+
+const OPENCODE_MODEL_DISCOVERY_COMMANDS: ReadonlyArray<ModelDiscoveryCommand> = [
+  { binary: "opencode", args: ["models", "--refresh"], timeoutMs: 8_000 },
+  { binary: "opencode", args: ["models"] },
+  { binary: "opencode", args: ["models", "openai"] },
+  { binary: "opencode", args: ["--help"] },
+];
 
 function toProviderModelOption(slug: string): ProviderModelOption | null {
   const normalizedSlug = slug.trim().toLowerCase();
@@ -98,7 +123,12 @@ function parseModelSlugLines(
         return [];
       }
       const withoutBullet = line.replace(/^\d+\.\s+/, "");
-      const firstToken = withoutBullet.split(/\s+/)[0]?.trim() ?? "";
+      const firstToken =
+        withoutBullet
+          .split(/\s+/)[0]
+          ?.trim()
+          .replace(/^[|]+/, "")
+          .replace(/[|),:;]+$/, "") ?? "";
       if (!firstToken || !isCandidate(firstToken)) {
         return [];
       }
@@ -136,6 +166,54 @@ function withTimeout<T>(task: Promise<T>, timeoutMs: number, message: string): P
       },
     );
   });
+}
+
+function commandOutput(result: CommandResult | null): string {
+  if (!result) {
+    return "";
+  }
+  return `${result.stdout}\n${result.stderr}`;
+}
+
+function isCursorModelCandidate(value: string): boolean {
+  const candidate = value.trim().toLowerCase();
+  if (!candidate) {
+    return false;
+  }
+  if (PROVIDER_SCOPED_MODEL_SLUG_PATTERN.test(candidate)) {
+    return true;
+  }
+  if (DASHED_MODEL_SLUG_PATTERN.test(candidate)) {
+    return true;
+  }
+  return O_SERIES_MODEL_PATTERN.test(candidate);
+}
+
+async function discoverModelsFromCommands(
+  commands: ReadonlyArray<ModelDiscoveryCommand>,
+  parseOutput: (output: string) => ProviderModelOption[],
+): Promise<ProviderModelOption[]> {
+  let aggregateOutput = "";
+  for (const command of commands) {
+    const result = await runCommand(
+      command.binary,
+      command.args,
+      command.timeoutMs ?? COMMAND_TIMEOUT_MS,
+    ).catch(() => null);
+    const output = commandOutput(result);
+    if (!output.trim()) {
+      continue;
+    }
+    aggregateOutput = `${aggregateOutput}\n${output}`;
+    const models = parseOutput(output);
+    if (models.length > 0) {
+      return models;
+    }
+  }
+  if (!aggregateOutput.trim()) {
+    return [];
+  }
+  return parseOutput(aggregateOutput);
 }
 
 async function runCommand(
@@ -389,23 +467,9 @@ async function discoverClaudeModels(): Promise<ProviderModelOption[]> {
 
 async function discoverCursorModels(): Promise<ProviderModelOption[]> {
   try {
-    const [modelsCommand, modelPrompt] = await Promise.all([
-      runCommand("cursor-agent", ["models"]).catch(() => null),
-      runCommand("cursor-agent", ["-p", "/model", "--force", "--output-format", "text"]).catch(
-        () => null,
-      ),
-    ]);
-    const aggregateOutput = `${modelsCommand?.stdout ?? ""}\n${modelsCommand?.stderr ?? ""}\n${modelPrompt?.stdout ?? ""}\n${modelPrompt?.stderr ?? ""}`;
-    return parseModelSlugLines(aggregateOutput, (candidate) => {
-      return (
-        candidate.startsWith("gpt-") ||
-        candidate.startsWith("claude-") ||
-        candidate.startsWith("gemini-") ||
-        candidate.startsWith("o1") ||
-        candidate.startsWith("o3") ||
-        candidate.startsWith("o4")
-      );
-    });
+    return await discoverModelsFromCommands(CURSOR_MODEL_DISCOVERY_COMMANDS, (output) =>
+      parseModelSlugLines(output, isCursorModelCandidate),
+    );
   } catch {
     return [];
   }
@@ -413,13 +477,9 @@ async function discoverCursorModels(): Promise<ProviderModelOption[]> {
 
 async function discoverOpenCodeModels(): Promise<ProviderModelOption[]> {
   try {
-    const [models, openAiModels, help] = await Promise.all([
-      runCommand("opencode", ["models"]).catch(() => null),
-      runCommand("opencode", ["models", "openai"]).catch(() => null),
-      runCommand("opencode", ["--help"]).catch(() => null),
-    ]);
-    const aggregateOutput = `${models?.stdout ?? ""}\n${models?.stderr ?? ""}\n${openAiModels?.stdout ?? ""}\n${openAiModels?.stderr ?? ""}\n${help?.stdout ?? ""}\n${help?.stderr ?? ""}`;
-    return extractModelOptionsByPattern("openCode", aggregateOutput, OPENCODE_MODEL_SLUG_PATTERN);
+    return await discoverModelsFromCommands(OPENCODE_MODEL_DISCOVERY_COMMANDS, (output) =>
+      extractModelOptionsByPattern("openCode", output, OPENCODE_MODEL_SLUG_PATTERN),
+    );
   } catch {
     return [];
   }

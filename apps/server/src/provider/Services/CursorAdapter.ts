@@ -23,5 +23,5 @@ export interface CursorAdapterShape extends ProviderAdapterShape<ProviderAdapter
  * CursorAdapter - Service tag for Cursor provider adapter operations.
  */
 export class CursorAdapter extends ServiceMap.Service<CursorAdapter, CursorAdapterShape>()(
-  "t3/provider/Services/CursorAdapter",
+  "k1/provider/Services/CursorAdapter",
 ) {}

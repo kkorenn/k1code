@@ -30,7 +30,7 @@ import {
   type WsPushChannel,
   type WsPushMessage,
   type WsPush,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import { compileResolvedKeybindingRule, DEFAULT_KEYBINDINGS } from "./keybindings";
 import type {
   TerminalClearInput,
@@ -40,7 +40,7 @@ import type {
   TerminalResizeInput,
   TerminalSessionSnapshot,
   TerminalWriteInput,
-} from "@t3tools/contracts";
+} from "@k1tools/contracts";
 import { TerminalManager, type TerminalManagerShape } from "./terminal/Services/Manager";
 import { makeSqlitePersistenceLive, SqlitePersistenceMemory } from "./persistence/Layers/Sqlite";
 import { SqlClient, SqlError } from "effect/unstable/sql";
@@ -1661,7 +1661,7 @@ describe("WebSocket Server", () => {
   });
 
   it("supports projects.createDirectory within the workspace root", async () => {
-    const workspace = makeTempDir("t3code-ws-create-directory-");
+    const workspace = makeTempDir("k1code-ws-create-directory-");
 
     server = await createTestServer({ cwd: "/test" });
     const addr = server.address();
@@ -1684,7 +1684,7 @@ describe("WebSocket Server", () => {
   });
 
   it("rejects projects.createDirectory when the target already exists", async () => {
-    const workspace = makeTempDir("t3code-ws-create-directory-existing-");
+    const workspace = makeTempDir("k1code-ws-create-directory-existing-");
     fs.mkdirSync(path.join(workspace, "existing"), { recursive: true });
 
     server = await createTestServer({ cwd: "/test" });
