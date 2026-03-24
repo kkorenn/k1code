@@ -170,4 +170,29 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain("Tool call");
     expect(markup).toContain("Read: /tmp/app.ts");
   });
+
+  it("renders context compaction entries in the normal work log", async () => {
+    const { MessagesTimeline } = await import("./MessagesTimeline");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...baseProps}
+        timelineEntries={[
+          {
+            id: "entry-1",
+            kind: "work",
+            createdAt: "2026-03-17T19:12:28.000Z",
+            entry: {
+              id: "work-1",
+              createdAt: "2026-03-17T19:12:28.000Z",
+              label: "Context compacted",
+              tone: "info",
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Context compacted");
+    expect(markup).toContain("Work log");
+  });
 });
