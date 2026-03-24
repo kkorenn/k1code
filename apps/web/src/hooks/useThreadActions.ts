@@ -1,10 +1,11 @@
 import { ThreadId } from "@t3tools/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { useAppSettings } from "../appSettings";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { useHandleNewThread } from "./useHandleNewThread";
 import { gitRemoveWorktreeMutationOptions } from "../lib/gitReactQuery";
 import { newCommandId } from "../lib/utils";
 import { readNativeApi } from "../nativeApi";
@@ -22,11 +23,11 @@ export function useThreadActions() {
     (store) => store.clearProjectDraftThreadById,
   );
   const clearTerminalState = useTerminalStateStore((state) => state.clearTerminalState);
-  const navigate = useNavigate();
   const routeThreadId = useParams({
     strict: false,
     select: (params) => (params.threadId ? ThreadId.makeUnsafe(params.threadId) : null),
   });
+  const { handleNewThread } = useHandleNewThread();
   const queryClient = useQueryClient();
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
 
@@ -34,6 +35,12 @@ export function useThreadActions() {
     async (threadId: ThreadId) => {
       const api = readNativeApi();
       if (!api) return;
+      const thread = threads.find((entry) => entry.id === threadId);
+      if (!thread) return;
+      if (thread.session && thread.session.status !== "closed") {
+        throw new Error("Cannot archive a running thread.");
+      }
+
       await api.orchestration.dispatchCommand({
         type: "thread.archive",
         commandId: newCommandId(),
@@ -41,10 +48,10 @@ export function useThreadActions() {
       });
 
       if (routeThreadId === threadId) {
-        void navigate({ to: "/", replace: true });
+        await handleNewThread(thread.projectId);
       }
     },
-    [navigate, routeThreadId],
+    [handleNewThread, routeThreadId, threads],
   );
 
   const unarchiveThread = useCallback(async (threadId: ThreadId) => {
@@ -102,7 +109,7 @@ export function useThreadActions() {
         // Terminal may already be closed.
       }
 
-      const shouldNavigateHome = routeThreadId === threadId;
+      const shouldOpenNewThread = routeThreadId === threadId;
       await api.orchestration.dispatchCommand({
         type: "thread.delete",
         commandId: newCommandId(),
@@ -112,8 +119,8 @@ export function useThreadActions() {
       clearProjectDraftThreadById(thread.projectId, thread.id);
       clearTerminalState(threadId);
 
-      if (shouldNavigateHome) {
-        void navigate({ to: "/", replace: true });
+      if (shouldOpenNewThread) {
+        await handleNewThread(thread.projectId);
       }
 
       if (!shouldDeleteWorktree || !orphanedWorktreePath || !threadProject) {
@@ -145,7 +152,7 @@ export function useThreadActions() {
       clearComposerDraftForThread,
       clearProjectDraftThreadById,
       clearTerminalState,
-      navigate,
+      handleNewThread,
       projects,
       removeWorktreeMutation,
       routeThreadId,

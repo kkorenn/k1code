@@ -1127,6 +1127,7 @@ function registerIpcHandlers(): void {
           id: item.id,
           label: item.label,
           destructive: item.destructive === true,
+          disabled: item.disabled === true,
         }));
       if (normalizedItems.length === 0) {
         return null;
@@ -1157,6 +1158,7 @@ function registerIpcHandlers(): void {
           }
           const itemOption: MenuItemConstructorOptions = {
             label: item.label,
+            enabled: !item.disabled,
             click: () => resolve(item.id),
           };
           if (item.destructive) {
