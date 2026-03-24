@@ -78,6 +78,7 @@ import { expandHomePath } from "./os-jank.ts";
 import { makeServerPushBus } from "./wsServer/pushBus.ts";
 import { makeServerReadiness } from "./wsServer/readiness.ts";
 import { decodeJsonResult, formatSchemaError } from "@t3tools/shared/schemaJson";
+import { discoverProviderModels } from "./provider/providerModels.ts";
 
 /**
  * ServerShape - Service API for server lifecycle control.
@@ -876,6 +877,15 @@ export const createServer = Effect.fn(function* (): Effect.fn.Return<
           providers: providerStatuses,
           availableEditors,
         };
+
+      case WS_METHODS.serverGetProviderModels:
+        return yield* Effect.tryPromise({
+          try: () => discoverProviderModels(),
+          catch: (cause) =>
+            new RouteRequestError({
+              message: `Failed to discover provider models: ${String(cause)}`,
+            }),
+        });
 
       case WS_METHODS.serverUpsertKeybinding: {
         const body = stripRequestTag(request.body);

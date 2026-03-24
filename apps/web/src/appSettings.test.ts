@@ -68,6 +68,20 @@ describe("getAppModelOptions", () => {
       true,
     );
   });
+
+  it("prefers discovered provider models and formats display names without dashes", () => {
+    const options = getAppModelOptions("codex", [], undefined, [
+      { slug: "gpt-5.4-mini", name: "gpt-5.4-mini" },
+    ]);
+
+    expect(options).toEqual([
+      {
+        slug: "gpt-5.4-mini",
+        name: "GPT 5.4 Mini",
+        isCustom: false,
+      },
+    ]);
+  });
 });
 
 describe("resolveAppModelSelection", () => {
@@ -75,31 +89,41 @@ describe("resolveAppModelSelection", () => {
     expect(
       resolveAppModelSelection(
         "codex",
-        { codex: ["galapagos-alpha"], claudeAgent: [] },
+        { codex: ["galapagos-alpha"], claudeAgent: [], gemini: [] },
         "galapagos-alpha",
       ),
     ).toBe("galapagos-alpha");
   });
 
   it("falls back to the provider default when no model is selected", () => {
-    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "")).toBe("gpt-5.4");
+    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [], gemini: [] }, "")).toBe(
+      "gpt-5.4",
+    );
   });
 
   it("resolves display names through the shared resolver", () => {
-    expect(resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "GPT-5.3 Codex")).toBe(
-      "gpt-5.3-codex",
-    );
+    expect(
+      resolveAppModelSelection(
+        "codex",
+        { codex: [], claudeAgent: [], gemini: [] },
+        "GPT-5.3 Codex",
+      ),
+    ).toBe("gpt-5.3-codex");
   });
 
   it("resolves aliases through the shared resolver", () => {
-    expect(resolveAppModelSelection("claudeAgent", { codex: [], claudeAgent: [] }, "sonnet")).toBe(
-      "claude-sonnet-4-6",
-    );
+    expect(
+      resolveAppModelSelection("claudeAgent", { codex: [], claudeAgent: [], gemini: [] }, "sonnet"),
+    ).toBe("claude-sonnet-4-6");
   });
 
   it("resolves transient selected custom models included in app model options", () => {
     expect(
-      resolveAppModelSelection("codex", { codex: [], claudeAgent: [] }, "custom/selected-model"),
+      resolveAppModelSelection(
+        "codex",
+        { codex: [], claudeAgent: [], gemini: [] },
+        "custom/selected-model",
+      ),
     ).toBe("custom/selected-model");
   });
 });
@@ -122,30 +146,35 @@ describe("provider-indexed custom model settings", () => {
   const settings = {
     customCodexModels: ["custom/codex-model"],
     customClaudeModels: ["claude/custom-opus"],
+    customGeminiModels: ["gemini/custom-pro"],
   } as const;
 
   it("exports one provider config per provider", () => {
     expect(MODEL_PROVIDER_SETTINGS.map((config) => config.provider)).toEqual([
       "codex",
       "claudeAgent",
+      "gemini",
     ]);
   });
 
   it("reads custom models for each provider", () => {
     expect(getCustomModelsForProvider(settings, "codex")).toEqual(["custom/codex-model"]);
     expect(getCustomModelsForProvider(settings, "claudeAgent")).toEqual(["claude/custom-opus"]);
+    expect(getCustomModelsForProvider(settings, "gemini")).toEqual(["gemini/custom-pro"]);
   });
 
   it("reads default custom models for each provider", () => {
     const defaults = {
       customCodexModels: ["default/codex-model"],
       customClaudeModels: ["claude/default-opus"],
+      customGeminiModels: ["gemini/default-pro"],
     } as const;
 
     expect(getDefaultCustomModelsForProvider(defaults, "codex")).toEqual(["default/codex-model"]);
     expect(getDefaultCustomModelsForProvider(defaults, "claudeAgent")).toEqual([
       "claude/default-opus",
     ]);
+    expect(getDefaultCustomModelsForProvider(defaults, "gemini")).toEqual(["gemini/default-pro"]);
   });
 
   it("patches custom models for codex", () => {
@@ -160,10 +189,17 @@ describe("provider-indexed custom model settings", () => {
     });
   });
 
+  it("patches custom models for gemini", () => {
+    expect(patchCustomModels("gemini", ["gemini/custom-pro"])).toEqual({
+      customGeminiModels: ["gemini/custom-pro"],
+    });
+  });
+
   it("builds a complete provider-indexed custom model record", () => {
     expect(getCustomModelsByProvider(settings)).toEqual({
       codex: ["custom/codex-model"],
       claudeAgent: ["claude/custom-opus"],
+      gemini: ["gemini/custom-pro"],
     });
   });
 
@@ -176,12 +212,16 @@ describe("provider-indexed custom model settings", () => {
     expect(
       modelOptionsByProvider.claudeAgent.some((option) => option.slug === "claude/custom-opus"),
     ).toBe(true);
+    expect(
+      modelOptionsByProvider.gemini.some((option) => option.slug === "gemini/custom-pro"),
+    ).toBe(true);
   });
 
   it("normalizes and deduplicates custom model options per provider", () => {
     const modelOptionsByProvider = getCustomModelOptionsByProvider({
       customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
       customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
+      customGeminiModels: [" gemini-2.5-flash ", "gemini/custom-pro", "gemini/custom-pro"],
     });
 
     expect(
@@ -194,6 +234,12 @@ describe("provider-indexed custom model settings", () => {
     expect(
       modelOptionsByProvider.claudeAgent.some((option) => option.slug === "claude-sonnet-4-6"),
     ).toBe(true);
+    expect(
+      modelOptionsByProvider.gemini.filter((option) => option.slug === "gemini/custom-pro"),
+    ).toHaveLength(1);
+    expect(modelOptionsByProvider.gemini.some((option) => option.slug === "gemini-2.5-flash")).toBe(
+      true,
+    );
   });
 });
 
@@ -210,6 +256,7 @@ describe("AppSettingsSchema", () => {
       ),
     ).toMatchObject({
       codexBinaryPath: "/usr/local/bin/codex",
+      geminiBinaryPath: "",
       codexHomePath: "",
       defaultThreadEnvMode: "local",
       confirmThreadDelete: false,
@@ -217,6 +264,7 @@ describe("AppSettingsSchema", () => {
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
       customCodexModels: [],
       customClaudeModels: [],
+      customGeminiModels: [],
     });
   });
 });

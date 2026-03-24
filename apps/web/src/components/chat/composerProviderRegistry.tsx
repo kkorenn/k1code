@@ -104,6 +104,15 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       <ClaudeTraitsPicker threadId={threadId} model={model} onPromptChange={onPromptChange} />
     ),
   },
+  gemini: {
+    getState: () => ({
+      provider: "gemini",
+      promptEffort: null,
+      modelOptionsForDispatch: undefined,
+    }),
+    renderTraitsMenuContent: () => null,
+    renderTraitsPicker: () => null,
+  },
 };
 
 export function getComposerProviderState(input: ComposerProviderStateInput): ComposerProviderState {

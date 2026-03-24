@@ -27,6 +27,7 @@ import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHe
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
+const GEMINI_PROVIDER = "gemini" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -264,6 +265,27 @@ const runClaudeCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const command = ChildProcess.make("claude", [...args], {
+      shell: process.platform === "win32",
+    });
+
+    const child = yield* spawner.spawn(command);
+
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    return { stdout, stderr, code: exitCode } satisfies CommandResult;
+  }).pipe(Effect.scoped);
+
+const runGeminiCommand = (args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const command = ChildProcess.make("gemini", [...args], {
       shell: process.platform === "win32",
     });
 
@@ -587,14 +609,81 @@ export const checkClaudeProviderStatus: Effect.Effect<
   } satisfies ServerProviderStatus;
 });
 
+// ── Gemini CLI health check ─────────────────────────────────────────
+
+export const checkGeminiProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runGeminiCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: GEMINI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "Gemini CLI (`gemini`) is not installed or not on PATH."
+        : `Failed to execute Gemini CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: GEMINI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Gemini CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: GEMINI_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `Gemini CLI is installed but failed to run. ${detail}`
+        : "Gemini CLI is installed but failed to run.",
+    };
+  }
+
+  return {
+    provider: GEMINI_PROVIDER,
+    status: "ready" as const,
+    available: true,
+    authStatus: "unknown" as const,
+    checkedAt,
+    message: "Gemini CLI is reachable. Authentication status is managed by Gemini CLI.",
+  } satisfies ServerProviderStatus;
+});
+
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
-    const statusesFiber = yield* Effect.all([checkCodexProviderStatus, checkClaudeProviderStatus], {
-      concurrency: "unbounded",
-    }).pipe(Effect.forkScoped);
+    const statusesFiber = yield* Effect.all(
+      [checkCodexProviderStatus, checkClaudeProviderStatus, checkGeminiProviderStatus],
+      {
+        concurrency: "unbounded",
+      },
+    ).pipe(Effect.forkScoped);
 
     return {
       getStatuses: Fiber.join(statusesFiber),

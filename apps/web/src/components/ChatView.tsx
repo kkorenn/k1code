@@ -33,7 +33,11 @@ import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib/gitReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
-import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
+import {
+  serverConfigQueryOptions,
+  serverProviderModelsQueryOptions,
+  serverQueryKeys,
+} from "~/lib/serverReactQuery";
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
 import {
@@ -104,6 +108,14 @@ import {
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { cn, randomUUID } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { toastManager } from "./ui/toast";
@@ -200,6 +212,74 @@ function formatOutgoingPrompt(params: {
   }
   return params.text;
 }
+
+function providerLabel(provider: ProviderKind): string {
+  switch (provider) {
+    case "codex":
+      return "Codex";
+    case "claudeAgent":
+      return "Claude";
+    case "gemini":
+      return "Gemini";
+    default:
+      return provider;
+  }
+}
+
+function isLikelyAuthErrorMessage(message: string | null | undefined): boolean {
+  if (typeof message !== "string") {
+    return false;
+  }
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("not logged in") ||
+    lower.includes("login required") ||
+    lower.includes("authentication required") ||
+    lower.includes("auth method") ||
+    lower.includes("api key") ||
+    lower.includes("unauthorized") ||
+    lower.includes("unauthenticated")
+  );
+}
+
+function authHelpMessageForProvider(provider: ProviderKind): string {
+  if (provider === "codex") {
+    return "Run `codex login` in your terminal, then try again.";
+  }
+  if (provider === "claudeAgent") {
+    return "Run `claude auth login` in your terminal, then try again.";
+  }
+  return "If you just installed Gemini CLI, run `gemini` once in a terminal, choose “Sign in with Google”, complete the browser flow, then retry here. If you use an API key, set `GEMINI_API_KEY` and run `gemini`.";
+}
+
+function normalizeAuthPromptDetail(input: {
+  provider: ProviderKind;
+  statusMessage: string | null | undefined;
+  sessionLastError: string | null | undefined;
+}): string | null {
+  const statusMessage = input.statusMessage?.trim() ?? "";
+  const sessionLastError = input.sessionLastError?.trim() ?? "";
+
+  if (sessionLastError.length > 0) {
+    return sessionLastError;
+  }
+
+  if (statusMessage.length === 0) {
+    return null;
+  }
+
+  const lowerStatus = statusMessage.toLowerCase();
+  if (
+    input.provider === "gemini" &&
+    (lowerStatus.includes("authentication status is managed by gemini cli") ||
+      lowerStatus.includes("gemini cli is reachable"))
+  ) {
+    return null;
+  }
+
+  return statusMessage;
+}
+
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
@@ -346,6 +426,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const authPromptKeyRef = useRef<string | null>(null);
   const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
     Record<string, string[]>
   >({});
@@ -597,14 +679,26 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider,
     activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
   );
+  const providerModelsQuery = useQuery(serverProviderModelsQueryOptions());
   const customModelsByProvider = useMemo(() => getCustomModelsByProvider(settings), [settings]);
   const selectedModel = useMemo(() => {
     const draftModel = composerDraft.model;
     if (!draftModel) {
       return baseThreadModel;
     }
-    return resolveAppModelSelection(selectedProvider, customModelsByProvider, draftModel);
-  }, [baseThreadModel, composerDraft.model, customModelsByProvider, selectedProvider]);
+    return resolveAppModelSelection(
+      selectedProvider,
+      customModelsByProvider,
+      draftModel,
+      providerModelsQuery.data,
+    );
+  }, [
+    baseThreadModel,
+    composerDraft.model,
+    customModelsByProvider,
+    providerModelsQuery.data,
+    selectedProvider,
+  ]);
   const draftModelOptions = composerDraft.modelOptions;
   const composerProviderState = useMemo(
     () =>
@@ -619,20 +713,31 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const providerOptionsForDispatch = useMemo(() => {
-    if (!settings.codexBinaryPath && !settings.codexHomePath) {
+    if (!settings.codexBinaryPath && !settings.codexHomePath && !settings.geminiBinaryPath) {
       return undefined;
     }
     return {
-      codex: {
-        ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-        ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-      },
+      ...(settings.codexBinaryPath || settings.codexHomePath
+        ? {
+            codex: {
+              ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
+              ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+            },
+          }
+        : {}),
+      ...(settings.geminiBinaryPath
+        ? {
+            gemini: {
+              binaryPath: settings.geminiBinaryPath,
+            },
+          }
+        : {}),
     };
-  }, [settings.codexBinaryPath, settings.codexHomePath]);
+  }, [settings.codexBinaryPath, settings.codexHomePath, settings.geminiBinaryPath]);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
-    () => getCustomModelOptionsByProvider(settings),
-    [settings],
+    () => getCustomModelOptionsByProvider(settings, providerModelsQuery.data),
+    [providerModelsQuery.data, settings],
   );
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
     const currentOptions = modelOptionsByProvider[selectedProvider];
@@ -1109,6 +1214,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => providerStatuses.find((status) => status.provider === selectedProvider) ?? null,
     [selectedProvider, providerStatuses],
   );
+  const activeSessionLastError = activeThread?.session?.lastError ?? null;
+  const shouldPromptForAuth =
+    activeProviderStatus?.authStatus === "unauthenticated" ||
+    isLikelyAuthErrorMessage(activeSessionLastError);
+  const authPromptProviderLabel = providerLabel(selectedProvider);
+  const authPromptDetail = normalizeAuthPromptDetail({
+    provider: selectedProvider,
+    statusMessage: activeProviderStatus?.message,
+    sessionLastError: activeSessionLastError,
+  });
+  const authPromptHelpMessage = authHelpMessageForProvider(selectedProvider);
+  const authPromptKey = `${selectedProvider}:${activeProviderStatus?.authStatus ?? "unknown"}:${activeProviderStatus?.checkedAt ?? ""}:${activeSessionLastError ?? ""}`;
+  useEffect(() => {
+    if (!shouldPromptForAuth) {
+      setAuthPromptOpen(false);
+      authPromptKeyRef.current = null;
+      return;
+    }
+    if (authPromptKeyRef.current === authPromptKey) {
+      return;
+    }
+    authPromptKeyRef.current = authPromptKey;
+    setAuthPromptOpen(true);
+  }, [authPromptKey, shouldPromptForAuth]);
   const activeProjectCwd = activeProject?.cwd ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const threadTerminalRuntimeEnv = useMemo(() => {
@@ -3493,6 +3622,34 @@ export default function ChatView({ threadId }: ChatViewProps) {
           onToggleDiff={onToggleDiff}
         />
       </header>
+
+      <Dialog open={authPromptOpen} onOpenChange={setAuthPromptOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{authPromptProviderLabel} Login Required</DialogTitle>
+            <DialogDescription>
+              Sign in to {authPromptProviderLabel} before starting a turn.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 text-sm text-muted-foreground">
+            <p>{authPromptHelpMessage}</p>
+            {authPromptDetail ? <p className="mt-2 line-clamp-4">{authPromptDetail}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAuthPromptOpen(false)}>
+              Dismiss
+            </Button>
+            <Button
+              onClick={() => {
+                setAuthPromptOpen(false);
+                void navigate({ to: "/settings" });
+              }}
+            >
+              Open Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Error banner */}
       <ProviderHealthBanner status={activeProviderStatus} />

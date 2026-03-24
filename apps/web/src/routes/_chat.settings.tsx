@@ -15,7 +15,10 @@ import {
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
-import { serverConfigQueryOptions } from "../lib/serverReactQuery";
+import {
+  serverConfigQueryOptions,
+  serverProviderModelsQueryOptions,
+} from "../lib/serverReactQuery";
 import { ensureNativeApi } from "../nativeApi";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -58,6 +61,7 @@ function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const providerModelsQuery = useQuery(serverProviderModelsQueryOptions());
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
@@ -65,12 +69,14 @@ function SettingsRouteView() {
   >({
     codex: "",
     claudeAgent: "",
+    gemini: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
   >({});
 
   const codexBinaryPath = settings.codexBinaryPath;
+  const geminiBinaryPath = settings.geminiBinaryPath;
   const codexHomePath = settings.codexHomePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
@@ -79,6 +85,7 @@ function SettingsRouteView() {
     "codex",
     settings.customCodexModels,
     settings.textGenerationModel,
+    providerModelsQuery.data?.codex,
   );
   const selectedGitTextGenerationModelLabel =
     gitTextGenerationModelOptions.find(
@@ -121,7 +128,12 @@ function SettingsRouteView() {
         }));
         return;
       }
-      if (getModelOptions(provider).some((option) => option.slug === normalized)) {
+      const discoveredProviderModels = providerModelsQuery.data?.[provider];
+      const providerModels =
+        discoveredProviderModels && discoveredProviderModels.length > 0
+          ? discoveredProviderModels
+          : getModelOptions(provider);
+      if (providerModels.some((option) => option.slug === normalized)) {
         setCustomModelErrorByProvider((existing) => ({
           ...existing,
           [provider]: "That model is already built in.",
@@ -153,7 +165,7 @@ function SettingsRouteView() {
         [provider]: null,
       }));
     },
-    [customModelInputByProvider, settings, updateSettings],
+    [customModelInputByProvider, providerModelsQuery.data, settings, updateSettings],
   );
 
   const removeCustomModel = useCallback(
@@ -197,7 +209,7 @@ function SettingsRouteView() {
               <div className="mb-4">
                 <h2 className="text-sm font-medium text-foreground">Appearance</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Choose how T3 Code looks across the app.
+                  Choose how K1 Code looks across the app.
                 </p>
               </div>
 
@@ -284,9 +296,10 @@ function SettingsRouteView() {
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <div className="mb-4">
-                <h2 className="text-sm font-medium text-foreground">Codex App Server</h2>
+                <h2 className="text-sm font-medium text-foreground">Provider CLI Overrides</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  These overrides apply to new sessions and let you use a non-default Codex install.
+                  These overrides apply to new sessions and let you choose non-default provider
+                  binaries.
                 </p>
               </div>
 
@@ -319,11 +332,29 @@ function SettingsRouteView() {
                   </span>
                 </label>
 
+                <label htmlFor="gemini-binary-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">Gemini binary path</span>
+                  <Input
+                    id="gemini-binary-path"
+                    value={geminiBinaryPath}
+                    onChange={(event) => updateSettings({ geminiBinaryPath: event.target.value })}
+                    placeholder="gemini"
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Leave blank to use <code>gemini</code> from your PATH.
+                  </span>
+                </label>
+
                 <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
-                    <p>Binary source</p>
+                    <p>Codex binary source</p>
                     <p className="mt-1 break-all font-mono text-[11px] text-foreground">
                       {codexBinaryPath || "PATH"}
+                    </p>
+                    <p className="mt-3">Gemini binary source</p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-foreground">
+                      {geminiBinaryPath || "PATH"}
                     </p>
                   </div>
                   <Button
@@ -333,11 +364,12 @@ function SettingsRouteView() {
                     onClick={() =>
                       updateSettings({
                         codexBinaryPath: defaults.codexBinaryPath,
+                        geminiBinaryPath: defaults.geminiBinaryPath,
                         codexHomePath: defaults.codexHomePath,
                       })
                     }
                   >
-                    Reset codex overrides
+                    Reset provider overrides
                   </Button>
                 </div>
               </div>

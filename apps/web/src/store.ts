@@ -23,13 +23,13 @@ export interface AppState {
   threadsHydrated: boolean;
 }
 
-const PERSISTED_STATE_KEY = "t3code:renderer-state:v8";
+const PERSISTED_STATE_KEY = "k1code:renderer-state:v8";
 const LEGACY_PERSISTED_STATE_KEYS = [
-  "t3code:renderer-state:v7",
-  "t3code:renderer-state:v6",
-  "t3code:renderer-state:v5",
-  "t3code:renderer-state:v4",
-  "t3code:renderer-state:v3",
+  "k1code:renderer-state:v7",
+  "k1code:renderer-state:v6",
+  "k1code:renderer-state:v5",
+  "k1code:renderer-state:v4",
+  "k1code:renderer-state:v3",
   "codething:renderer-state:v4",
   "codething:renderer-state:v3",
   "codething:renderer-state:v2",
@@ -188,7 +188,7 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "claudeAgent") {
+  if (providerName === "codex" || providerName === "claudeAgent" || providerName === "gemini") {
     return providerName;
   }
   return "codex";
@@ -198,7 +198,11 @@ function inferProviderForThreadModel(input: {
   readonly model: string;
   readonly sessionProviderName: string | null;
 }): ProviderKind {
-  if (input.sessionProviderName === "codex" || input.sessionProviderName === "claudeAgent") {
+  if (
+    input.sessionProviderName === "codex" ||
+    input.sessionProviderName === "claudeAgent" ||
+    input.sessionProviderName === "gemini"
+  ) {
     return input.sessionProviderName;
   }
   return inferProviderForModel(input.model);

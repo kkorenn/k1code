@@ -102,7 +102,7 @@ function isoAt(offsetSeconds: number): string {
 function createBaseServerConfig(): ServerConfig {
   return {
     cwd: "/repo/project",
-    keybindingsConfigPath: "/repo/project/.t3code-keybindings.json",
+    keybindingsConfigPath: "/repo/project/.k1code-keybindings.json",
     keybindings: [],
     issues: [],
     providers: [
@@ -385,6 +385,9 @@ function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
   const tag = body._tag;
   if (tag === ORCHESTRATION_WS_METHODS.getSnapshot) {
     return fixture.snapshot;
+  }
+  if (tag === WS_METHODS.serverGetProviderModels) {
+    return { codex: [], claudeAgent: [], gemini: [] };
   }
   if (tag === WS_METHODS.serverGetConfig) {
     return fixture.serverConfig;

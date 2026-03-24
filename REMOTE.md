@@ -1,20 +1,20 @@
 # Remote Access Setup
 
-Use this when you want to open T3 Code from another device (phone, tablet, another laptop).
+Use this when you want to open K1 Code from another device (phone, tablet, another laptop).
 
 ## CLI ↔ Env option map
 
-The T3 Code CLI accepts the following configuration options, available either as CLI flags or environment variables:
+The K1 Code CLI accepts the following configuration options, available either as CLI flags or environment variables:
 
 | CLI flag                | Env var               | Notes                              |
 | ----------------------- | --------------------- | ---------------------------------- |
-| `--mode <web\|desktop>` | `T3CODE_MODE`         | Runtime mode.                      |
-| `--port <number>`       | `T3CODE_PORT`         | HTTP/WebSocket port.               |
-| `--host <address>`      | `T3CODE_HOST`         | Bind interface/address.            |
-| `--base-dir <path>`     | `T3CODE_HOME`         | Base directory.                    |
+| `--mode <web\|desktop>` | `K1CODE_MODE`         | Runtime mode.                      |
+| `--port <number>`       | `K1CODE_PORT`         | HTTP/WebSocket port.               |
+| `--host <address>`      | `K1CODE_HOST`         | Bind interface/address.            |
+| `--base-dir <path>`     | `K1CODE_HOME`         | Base directory.                    |
 | `--dev-url <url>`       | `VITE_DEV_SERVER_URL` | Dev web URL redirect/proxy target. |
-| `--no-browser`          | `T3CODE_NO_BROWSER`   | Disable auto-open browser.         |
-| `--auth-token <token>`  | `T3CODE_AUTH_TOKEN`   | WebSocket auth token.              |
+| `--no-browser`          | `K1CODE_NO_BROWSER`   | Disable auto-open browser.         |
+| `--auth-token <token>`  | `K1CODE_AUTH_TOKEN`   | WebSocket auth token.              |
 
 > TIP: Use the `--help` flag to see all available options and their descriptions.
 

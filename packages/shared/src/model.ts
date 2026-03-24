@@ -18,6 +18,7 @@ import {
 const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
   claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
+  gemini: new Set(MODEL_OPTIONS_BY_PROVIDER.gemini.map((option) => option.slug)),
 };
 
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
@@ -27,6 +28,83 @@ const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
 export interface SelectableModelOption {
   slug: string;
   name: string;
+}
+
+const DISPLAY_TOKEN_UPPERCASE = new Set([
+  "ai",
+  "api",
+  "cli",
+  "cpu",
+  "gpu",
+  "gpt",
+  "http",
+  "https",
+  "id",
+  "ml",
+  "sdk",
+  "ui",
+  "url",
+  "ux",
+]);
+const MODEL_SLUG_DISPLAY_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)+$/i;
+
+function canonicalizeModelDisplayText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s._-]+/g, "");
+}
+
+function mergeNumericVersionTokens(tokens: ReadonlyArray<string>): string[] {
+  const merged: string[] = [];
+  for (const token of tokens) {
+    if (/^\d+$/.test(token) && merged.length > 0 && /^\d+(\.\d+)*$/.test(merged.at(-1)!)) {
+      merged[merged.length - 1] = `${merged.at(-1)}.${token}`;
+      continue;
+    }
+    merged.push(token);
+  }
+  return merged;
+}
+
+function formatModelDisplayToken(token: string): string {
+  const normalized = token.trim();
+  if (!normalized) return "";
+
+  const lower = normalized.toLowerCase();
+  if (DISPLAY_TOKEN_UPPERCASE.has(lower)) {
+    return lower.toUpperCase();
+  }
+  if (/^\d+(\.\d+)+$/.test(lower) || /^\d+$/.test(lower)) {
+    return lower;
+  }
+
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+export function formatModelDisplayName(model: string | null | undefined): string {
+  if (typeof model !== "string") {
+    return "";
+  }
+
+  const trimmed = model.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (!MODEL_SLUG_DISPLAY_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+
+  const tokens = trimmed
+    .replaceAll("_", "-")
+    .split("-")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) {
+    return trimmed;
+  }
+
+  return mergeNumericVersionTokens(tokens).map(formatModelDisplayToken).join(" ");
 }
 
 export function getModelOptions(provider: ProviderKind = "codex") {
@@ -105,6 +183,15 @@ export function resolveSelectableModel(
   if (byName) {
     return byName.slug;
   }
+  const canonicalLookup = canonicalizeModelDisplayText(trimmed);
+  if (canonicalLookup.length > 0) {
+    const byCanonicalName = options.find(
+      (option) => canonicalizeModelDisplayText(option.name) === canonicalLookup,
+    );
+    if (byCanonicalName) {
+      return byCanonicalName.slug;
+    }
+  }
 
   const normalized = normalizeModelSlug(trimmed, provider);
   if (!normalized) {
@@ -140,6 +227,11 @@ export function inferProviderForModel(
   model: string | null | undefined,
   fallback: ProviderKind = "codex",
 ): ProviderKind {
+  const normalizedGemini = normalizeModelSlug(model, "gemini");
+  if (normalizedGemini && MODEL_SLUG_SET_BY_PROVIDER.gemini.has(normalizedGemini)) {
+    return "gemini";
+  }
+
   const normalizedClaude = normalizeModelSlug(model, "claudeAgent");
   if (normalizedClaude && MODEL_SLUG_SET_BY_PROVIDER.claudeAgent.has(normalizedClaude)) {
     return "claudeAgent";
@@ -150,7 +242,18 @@ export function inferProviderForModel(
     return "codex";
   }
 
-  return typeof model === "string" && model.trim().startsWith("claude-") ? "claudeAgent" : fallback;
+  if (typeof model !== "string") {
+    return fallback;
+  }
+
+  const trimmed = model.trim();
+  if (trimmed.startsWith("gemini-")) {
+    return "gemini";
+  }
+  if (trimmed.startsWith("claude-")) {
+    return "claudeAgent";
+  }
+  return fallback;
 }
 
 export function getReasoningEffortOptions(provider: "codex"): ReadonlyArray<CodexReasoningEffort>;

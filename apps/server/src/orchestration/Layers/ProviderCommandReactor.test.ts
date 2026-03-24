@@ -96,7 +96,7 @@ describe("ProviderCommandReactor", () => {
     readonly threadModel?: string;
   }) {
     const now = new Date().toISOString();
-    const baseDir = input?.baseDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "t3code-reactor-"));
+    const baseDir = input?.baseDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "k1code-reactor-"));
     createdBaseDirs.add(baseDir);
     const { stateDir } = deriveServerPathsSync(baseDir, undefined);
     createdStateDirs.add(stateDir);
@@ -110,7 +110,9 @@ describe("ProviderCommandReactor", () => {
         typeof input === "object" &&
         input !== null &&
         "provider" in input &&
-        (input.provider === "codex" || input.provider === "claudeAgent")
+        (input.provider === "codex" ||
+          input.provider === "claudeAgent" ||
+          input.provider === "gemini")
           ? input.provider
           : "codex";
       const resumeCursor =

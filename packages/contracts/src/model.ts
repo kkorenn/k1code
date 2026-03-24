@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { TrimmedNonEmptyString } from "./baseSchemas";
 import type { ProviderKind } from "./orchestration";
 
 export const CODEX_REASONING_EFFORT_OPTIONS = ["xhigh", "high", "medium", "low"] as const;
@@ -20,13 +21,30 @@ export const ClaudeModelOptions = Schema.Struct({
 });
 export type ClaudeModelOptions = typeof ClaudeModelOptions.Type;
 
+export const GeminiModelOptions = Schema.Struct({});
+export type GeminiModelOptions = typeof GeminiModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
+  gemini: Schema.optional(GeminiModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 
-type ModelOption = {
+export const ProviderModelOption = Schema.Struct({
+  slug: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+});
+export type ProviderModelOption = typeof ProviderModelOption.Type;
+
+export const ProviderModelOptionsByProvider = Schema.Struct({
+  codex: Schema.Array(ProviderModelOption),
+  claudeAgent: Schema.Array(ProviderModelOption),
+  gemini: Schema.Array(ProviderModelOption),
+});
+export type ProviderModelOptionsByProvider = typeof ProviderModelOptionsByProvider.Type;
+
+type BuiltInModelOption = {
   readonly slug: string;
   readonly name: string;
 };
@@ -45,7 +63,11 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
     { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
   ],
-} as const satisfies Record<ProviderKind, readonly ModelOption[]>;
+  gemini: [
+    { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+    { slug: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+  ],
+} as const satisfies Record<ProviderKind, readonly BuiltInModelOption[]>;
 export type ModelOptionsByProvider = typeof MODEL_OPTIONS_BY_PROVIDER;
 
 type BuiltInModelSlug = (typeof MODEL_OPTIONS_BY_PROVIDER)[ProviderKind][number]["slug"];
@@ -54,6 +76,7 @@ export type ModelSlug = BuiltInModelSlug | (string & {});
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, ModelSlug> = {
   codex: "gpt-5.4",
   claudeAgent: "claude-sonnet-4-6",
+  gemini: "gemini-2.5-pro",
 };
 
 // Backward compatibility for existing Codex-only call sites.
@@ -83,14 +106,22 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "claude-haiku-4.5": "claude-haiku-4-5",
     "claude-haiku-4-5-20251001": "claude-haiku-4-5",
   },
+  gemini: {
+    "2.5-pro": "gemini-2.5-pro",
+    "2.5-flash": "gemini-2.5-flash",
+    "gemini-pro": "gemini-2.5-pro",
+    "gemini-flash": "gemini-2.5-flash",
+  },
 };
 
 export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   codex: CODEX_REASONING_EFFORT_OPTIONS,
   claudeAgent: CLAUDE_CODE_EFFORT_OPTIONS,
+  gemini: [],
 } as const satisfies Record<ProviderKind, readonly ProviderReasoningEffort[]>;
 
 export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   codex: "high",
   claudeAgent: "high",
+  gemini: "high",
 } as const satisfies Record<ProviderKind, ProviderReasoningEffort>;

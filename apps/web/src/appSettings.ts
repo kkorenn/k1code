@@ -1,7 +1,13 @@
 import { useCallback } from "react";
 import { Option, Schema } from "effect";
-import { TrimmedNonEmptyString, type ProviderKind } from "@t3tools/contracts";
 import {
+  TrimmedNonEmptyString,
+  type ProviderKind,
+  type ProviderModelOption,
+  type ProviderModelOptionsByProvider,
+} from "@t3tools/contracts";
+import {
+  formatModelDisplayName,
   getDefaultModel,
   getModelOptions,
   normalizeModelSlug,
@@ -10,14 +16,14 @@ import {
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { EnvMode } from "./components/BranchToolbar.logic";
 
-const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
+const APP_SETTINGS_STORAGE_KEY = "k1code:app-settings:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
 
 export const TimestampFormat = Schema.Literals(["locale", "12-hour", "24-hour"]);
 export type TimestampFormat = typeof TimestampFormat.Type;
 export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
-type CustomModelSettingsKey = "customCodexModels" | "customClaudeModels";
+type CustomModelSettingsKey = "customCodexModels" | "customClaudeModels" | "customGeminiModels";
 export type ProviderCustomModelConfig = {
   provider: ProviderKind;
   settingsKey: CustomModelSettingsKey;
@@ -31,6 +37,7 @@ export type ProviderCustomModelConfig = {
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
+  gemini: new Set(getModelOptions("gemini").map((option) => option.slug)),
 };
 
 const withDefaults =
@@ -48,6 +55,7 @@ const withDefaults =
 
 export const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  geminiBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   defaultThreadEnvMode: EnvMode.pipe(withDefaults(() => "local" as const satisfies EnvMode)),
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
@@ -55,6 +63,7 @@ export const AppSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customGeminiModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
@@ -63,6 +72,8 @@ export interface AppModelOption {
   name: string;
   isCustom: boolean;
 }
+
+type ProviderModelList = ReadonlyArray<ProviderModelOption>;
 
 const DEFAULT_APP_SETTINGS = AppSettingsSchema.makeUnsafe({});
 const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConfig> = {
@@ -83,6 +94,15 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     description: "Save additional Claude model slugs for the picker and `/model` command.",
     placeholder: "your-claude-model-slug",
     example: "claude-sonnet-5-0",
+  },
+  gemini: {
+    provider: "gemini",
+    settingsKey: "customGeminiModels",
+    defaultSettingsKey: "customGeminiModels",
+    title: "Gemini",
+    description: "Save additional Gemini model slugs for the picker and `/model` command.",
+    placeholder: "your-gemini-model-slug",
+    example: "gemini-2.5-flash-lite-preview",
   },
 };
 export const MODEL_PROVIDER_SETTINGS = Object.values(PROVIDER_CUSTOM_MODEL_CONFIG);
@@ -121,6 +141,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     ...settings,
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customClaudeModels: normalizeCustomModelSlugs(settings.customClaudeModels, "claudeAgent"),
+    customGeminiModels: normalizeCustomModelSlugs(settings.customGeminiModels, "gemini"),
   };
 }
 
@@ -153,6 +174,7 @@ export function getCustomModelsByProvider(
   return {
     codex: getCustomModelsForProvider(settings, "codex"),
     claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
+    gemini: getCustomModelsForProvider(settings, "gemini"),
   };
 }
 
@@ -160,14 +182,16 @@ export function getAppModelOptions(
   provider: ProviderKind,
   customModels: readonly string[],
   selectedModel?: string | null,
+  discoveredModels?: ProviderModelList,
 ): AppModelOption[] {
-  const options: AppModelOption[] = getModelOptions(provider).map(({ slug, name }) => ({
+  const baseModels =
+    discoveredModels && discoveredModels.length > 0 ? discoveredModels : getModelOptions(provider);
+  const options: AppModelOption[] = baseModels.map(({ slug }) => ({
     slug,
-    name,
+    name: formatModelDisplayName(slug),
     isCustom: false,
   }));
   const seen = new Set(options.map((option) => option.slug));
-  const trimmedSelectedModel = selectedModel?.trim().toLowerCase();
 
   for (const slug of normalizeCustomModelSlugs(customModels, provider)) {
     if (seen.has(slug)) {
@@ -177,23 +201,22 @@ export function getAppModelOptions(
     seen.add(slug);
     options.push({
       slug,
-      name: slug,
+      name: formatModelDisplayName(slug),
       isCustom: true,
     });
   }
 
   const normalizedSelectedModel = normalizeModelSlug(selectedModel, provider);
-  const selectedModelMatchesExistingName =
-    typeof trimmedSelectedModel === "string" &&
-    options.some((option) => option.name.toLowerCase() === trimmedSelectedModel);
+  const selectedModelMatchesExistingOption =
+    resolveSelectableModel(provider, selectedModel, options) !== null;
   if (
     normalizedSelectedModel &&
     !seen.has(normalizedSelectedModel) &&
-    !selectedModelMatchesExistingName
+    !selectedModelMatchesExistingOption
   ) {
     options.push({
       slug: normalizedSelectedModel,
-      name: normalizedSelectedModel,
+      name: formatModelDisplayName(normalizedSelectedModel),
       isCustom: true,
     });
   }
@@ -205,19 +228,42 @@ export function resolveAppModelSelection(
   provider: ProviderKind,
   customModels: Record<ProviderKind, readonly string[]>,
   selectedModel: string | null | undefined,
+  discoveredModelsByProvider?: ProviderModelOptionsByProvider,
 ): string {
   const customModelsForProvider = customModels[provider];
-  const options = getAppModelOptions(provider, customModelsForProvider, selectedModel);
+  const options = getAppModelOptions(
+    provider,
+    customModelsForProvider,
+    selectedModel,
+    discoveredModelsByProvider?.[provider],
+  );
   return resolveSelectableModel(provider, selectedModel, options) ?? getDefaultModel(provider);
 }
 
 export function getCustomModelOptionsByProvider(
   settings: Pick<AppSettings, CustomModelSettingsKey>,
+  discoveredModelsByProvider?: ProviderModelOptionsByProvider,
 ): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   const customModelsByProvider = getCustomModelsByProvider(settings);
   return {
-    codex: getAppModelOptions("codex", customModelsByProvider.codex),
-    claudeAgent: getAppModelOptions("claudeAgent", customModelsByProvider.claudeAgent),
+    codex: getAppModelOptions(
+      "codex",
+      customModelsByProvider.codex,
+      undefined,
+      discoveredModelsByProvider?.codex,
+    ),
+    claudeAgent: getAppModelOptions(
+      "claudeAgent",
+      customModelsByProvider.claudeAgent,
+      undefined,
+      discoveredModelsByProvider?.claudeAgent,
+    ),
+    gemini: getAppModelOptions(
+      "gemini",
+      customModelsByProvider.gemini,
+      undefined,
+      discoveredModelsByProvider?.gemini,
+    ),
   };
 }
 

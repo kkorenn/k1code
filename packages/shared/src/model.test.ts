@@ -10,6 +10,7 @@ import {
 
 import {
   applyClaudePromptEffortPrefix,
+  formatModelDisplayName,
   getEffectiveClaudeCodeEffort,
   getDefaultModel,
   getDefaultReasoningEffort,
@@ -30,6 +31,19 @@ import {
   supportsClaudeThinkingToggle,
   supportsClaudeUltrathinkKeyword,
 } from "./model";
+
+describe("formatModelDisplayName", () => {
+  it("formats dashed model slugs with title case tokens", () => {
+    expect(formatModelDisplayName("gpt-5.4-mini")).toBe("GPT 5.4 Mini");
+    expect(formatModelDisplayName("claude-sonnet-4-6")).toBe("Claude Sonnet 4.6");
+    expect(formatModelDisplayName("gemini-2.5-flash")).toBe("Gemini 2.5 Flash");
+  });
+
+  it("keeps non-standard custom model strings unchanged", () => {
+    expect(formatModelDisplayName("custom/internal-model")).toBe("custom/internal-model");
+    expect(formatModelDisplayName("My Internal Model")).toBe("My Internal Model");
+  });
+});
 
 describe("normalizeModelSlug", () => {
   it("maps known aliases to canonical slugs", () => {

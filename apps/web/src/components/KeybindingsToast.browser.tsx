@@ -40,7 +40,7 @@ const wsLink = ws.link(/ws(s)?:\/\/.*/);
 function createBaseServerConfig(): ServerConfig {
   return {
     cwd: "/repo/project",
-    keybindingsConfigPath: "/repo/project/.t3code-keybindings.json",
+    keybindingsConfigPath: "/repo/project/.k1code-keybindings.json",
     keybindings: [],
     issues: [],
     providers: [
@@ -130,6 +130,9 @@ function buildFixture(): TestFixture {
 function resolveWsRpc(tag: string): unknown {
   if (tag === ORCHESTRATION_WS_METHODS.getSnapshot) {
     return fixture.snapshot;
+  }
+  if (tag === WS_METHODS.serverGetProviderModels) {
+    return { codex: [], claudeAgent: [], gemini: [] };
   }
   if (tag === WS_METHODS.serverGetConfig) {
     return fixture.serverConfig;

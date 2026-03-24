@@ -18,6 +18,7 @@ import type {
   GitStatusInput,
   GitStatusResult,
 } from "./git";
+import type { ProviderModelOptionsByProvider } from "./model";
 import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -158,6 +159,7 @@ export interface NativeApi {
   };
   server: {
     getConfig: () => Promise<ServerConfig>;
+    getProviderModels: () => Promise<ProviderModelOptionsByProvider>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
   };
   orchestration: {
