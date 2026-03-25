@@ -74,9 +74,8 @@ K1 Code uses these locally — it does NOT replace them.
 
 ## 🖼 Screenshots
 
-<!-- Add your images here -->
-
 ![Main UI](./docs/screenshot.png)
+![Setting](./docs/setting.png)
 
 ---
 
