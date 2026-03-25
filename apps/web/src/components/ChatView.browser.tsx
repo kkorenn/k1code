@@ -444,6 +444,62 @@ function createSnapshotWithActionablePlan(): OrchestrationReadModel {
   };
 }
 
+function createSnapshotWithPendingUserInput(): OrchestrationReadModel {
+  const snapshot = createSnapshotForTargetUser({
+    targetMessageId: "msg-user-pending-user-input-target" as MessageId,
+    targetText: "pending user input thread",
+  });
+  const thread = snapshot.threads[0]!;
+  return {
+    ...snapshot,
+    threads: [
+      {
+        ...thread,
+        activities: [
+          {
+            id: "activity-user-input-open" as never,
+            kind: "user-input.requested",
+            summary: "User input requested",
+            tone: "info",
+            createdAt: isoAt(400),
+            updatedAt: isoAt(400),
+            turnId: null,
+            provider: "codex",
+            payload: {
+              requestId: "req-user-input-browser-1",
+              questions: [
+                {
+                  id: "sandbox_mode_1",
+                  header: "Sandbox",
+                  question: "Question 1",
+                  options: [
+                    {
+                      label: "Option 1",
+                      description: "First answer option",
+                    },
+                  ],
+                },
+                {
+                  id: "sandbox_mode_2",
+                  header: "Sandbox",
+                  question: "Question 2",
+                  options: [
+                    {
+                      label: "Option 2",
+                      description: "Second answer option",
+                    },
+                  ],
+                },
+              ],
+            },
+          } as OrchestrationReadModel["threads"][number]["activities"][number],
+        ],
+        updatedAt: isoAt(401),
+      },
+    ],
+  };
+}
+
 function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
   const tag = body._tag;
   if (tag === ORCHESTRATION_WS_METHODS.getSnapshot) {
@@ -2070,6 +2126,43 @@ describe("ChatView timeline estimator parity (full app)", () => {
       await waitForOverlaySpacerExpanded();
       implementationMenuButton.click();
       await waitForOverlaySpacerCollapsed();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("submits pending user-input answers after selecting an option", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotWithPendingUserInput(),
+    });
+
+    try {
+      const firstOptionButton = await waitForButtonByText("Option 1");
+      firstOptionButton.click();
+
+      const secondOptionButton = await waitForButtonByText("Option 2");
+      secondOptionButton.click();
+
+      await vi.waitFor(
+        () => {
+          const dispatchRequests = wsRequests.filter(
+            (request) => request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand,
+          ) as Array<{ command?: Record<string, unknown> }>;
+          const respondRequest = dispatchRequests.find(
+            (request) => request.command?.type === "thread.user-input.respond",
+          );
+          expect(respondRequest?.command).toMatchObject({
+            threadId: THREAD_ID,
+            requestId: "req-user-input-browser-1",
+            answers: {
+              sandbox_mode_1: "Option 1",
+              sandbox_mode_2: "Option 2",
+            },
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
     } finally {
       await mounted.cleanup();
     }

@@ -68,6 +68,7 @@ import { isScrollContainerNearBottom } from "../chat-scroll";
 import {
   buildPendingUserInputAnswers,
   derivePendingUserInputProgress,
+  findFirstUnansweredPendingUserInputQuestionIndex,
   setPendingUserInputCustomAnswer,
   type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
@@ -448,6 +449,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ApprovalRequestId[]
   >([]);
   const [pendingUserInputAnswersByRequestId, setPendingUserInputAnswersByRequestId] = useState<
+    Record<string, Record<string, PendingUserInputDraftAnswer>>
+  >({});
+  const pendingUserInputAnswersByRequestIdRef = useRef<
     Record<string, Record<string, PendingUserInputDraftAnswer>>
   >({});
   const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
@@ -973,13 +977,6 @@ export default function ChatView({ threadId }: ChatViewProps) {
         : null,
     [activePendingDraftAnswers, activePendingQuestionIndex, activePendingUserInput],
   );
-  const activePendingResolvedAnswers = useMemo(
-    () =>
-      activePendingUserInput
-        ? buildPendingUserInputAnswers(activePendingUserInput.questions, activePendingDraftAnswers)
-        : null,
-    [activePendingDraftAnswers, activePendingUserInput],
-  );
   const activePendingIsResponding = activePendingUserInput
     ? respondingUserInputRequestIds.includes(activePendingUserInput.requestId)
     : false;
@@ -1066,6 +1063,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
     activePendingUserInput?.requestId,
     activePendingProgress?.activeQuestion?.id,
   ]);
+  useEffect(() => {
+    pendingUserInputAnswersByRequestIdRef.current = pendingUserInputAnswersByRequestId;
+  }, [pendingUserInputAnswersByRequestId]);
   useEffect(() => {
     attachmentPreviewHandoffByMessageIdRef.current = attachmentPreviewHandoffByMessageId;
   }, [attachmentPreviewHandoffByMessageId]);
@@ -3204,16 +3204,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
       if (!activePendingUserInput) {
         return;
       }
-      setPendingUserInputAnswersByRequestId((existing) => ({
-        ...existing,
-        [activePendingUserInput.requestId]: {
-          ...existing[activePendingUserInput.requestId],
-          [questionId]: {
-            selectedOptionLabel: optionLabel,
-            customAnswer: "",
+      setPendingUserInputAnswersByRequestId((existing) => {
+        const next = {
+          ...existing,
+          [activePendingUserInput.requestId]: {
+            ...existing[activePendingUserInput.requestId],
+            [questionId]: {
+              selectedOptionLabel: optionLabel,
+              customAnswer: "",
+            },
           },
-        },
-      }));
+        };
+        pendingUserInputAnswersByRequestIdRef.current = next;
+        return next;
+      });
       promptRef.current = "";
       setComposerCursor(0);
       setComposerTrigger(null);
@@ -3233,16 +3237,20 @@ export default function ChatView({ threadId }: ChatViewProps) {
         return;
       }
       promptRef.current = value;
-      setPendingUserInputAnswersByRequestId((existing) => ({
-        ...existing,
-        [activePendingUserInput.requestId]: {
-          ...existing[activePendingUserInput.requestId],
-          [questionId]: setPendingUserInputCustomAnswer(
-            existing[activePendingUserInput.requestId]?.[questionId],
-            value,
-          ),
-        },
-      }));
+      setPendingUserInputAnswersByRequestId((existing) => {
+        const next = {
+          ...existing,
+          [activePendingUserInput.requestId]: {
+            ...existing[activePendingUserInput.requestId],
+            [questionId]: setPendingUserInputCustomAnswer(
+              existing[activePendingUserInput.requestId]?.[questionId],
+              value,
+            ),
+          },
+        };
+        pendingUserInputAnswersByRequestIdRef.current = next;
+        return next;
+      });
       setComposerCursor(nextCursor);
       setComposerTrigger(
         cursorAdjacentToMention ? null : detectComposerTrigger(value, expandedCursor),
@@ -3255,16 +3263,28 @@ export default function ChatView({ threadId }: ChatViewProps) {
     if (!activePendingUserInput || !activePendingProgress) {
       return;
     }
+    const latestDraftAnswers =
+      pendingUserInputAnswersByRequestIdRef.current[activePendingUserInput.requestId] ??
+      EMPTY_PENDING_USER_INPUT_ANSWERS;
     if (activePendingProgress.isLastQuestion) {
-      if (activePendingResolvedAnswers) {
-        void onRespondToUserInput(activePendingUserInput.requestId, activePendingResolvedAnswers);
+      const nextResolvedAnswers = buildPendingUserInputAnswers(
+        activePendingUserInput.questions,
+        latestDraftAnswers,
+      );
+      if (nextResolvedAnswers) {
+        void onRespondToUserInput(activePendingUserInput.requestId, nextResolvedAnswers);
+        return;
       }
+      const firstUnansweredIndex = findFirstUnansweredPendingUserInputQuestionIndex(
+        activePendingUserInput.questions,
+        latestDraftAnswers,
+      );
+      setActivePendingUserInputQuestionIndex(firstUnansweredIndex);
       return;
     }
     setActivePendingUserInputQuestionIndex(activePendingProgress.questionIndex + 1);
   }, [
     activePendingProgress,
-    activePendingResolvedAnswers,
     activePendingUserInput,
     onRespondToUserInput,
     setActivePendingUserInputQuestionIndex,
@@ -4189,7 +4209,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
                         "flex items-center justify-between px-2.5 pb-2.5 sm:px-3 sm:pb-3",
                         isComposerFooterCompact
                           ? "gap-1.5"
-                          : "flex-wrap gap-2 sm:flex-nowrap sm:gap-0",
+                          : activePendingProgress
+                            ? "flex-wrap gap-2 sm:gap-2"
+                            : "flex-wrap gap-2 sm:flex-nowrap sm:gap-0",
                       )}
                     >
                       <div
@@ -4197,7 +4219,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           "flex min-w-0 flex-1 items-center",
                           isComposerFooterCompact
                             ? "gap-1 overflow-hidden"
-                            : "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible",
+                            : activePendingProgress
+                              ? "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-0"
+                              : "gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible",
                         )}
                       >
                         {/* Provider/model picker */}
@@ -4376,7 +4400,10 @@ export default function ChatView({ threadId }: ChatViewProps) {
                       {/* Right side: send / stop button */}
                       <div
                         data-chat-composer-actions="right"
-                        className="flex shrink-0 items-center gap-2"
+                        className={cn(
+                          "flex shrink-0 items-center gap-2",
+                          activePendingProgress && "w-full justify-end sm:w-auto",
+                        )}
                       >
                         {activeContextWindow ? (
                           <ContextWindowMeter usage={activeContextWindow} />
@@ -4387,7 +4414,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                           </span>
                         ) : null}
                         {activePendingProgress ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                             {activePendingProgress.questionIndex > 0 ? (
                               <Button
                                 size="sm"
@@ -4404,10 +4431,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               size="sm"
                               className="rounded-full px-4"
                               disabled={
-                                activePendingIsResponding ||
-                                (activePendingProgress.isLastQuestion
-                                  ? !activePendingResolvedAnswers
-                                  : !activePendingProgress.canAdvance)
+                                activePendingIsResponding || !activePendingProgress.canAdvance
                               }
                             >
                               {activePendingIsResponding
