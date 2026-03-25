@@ -4,6 +4,7 @@ import { assert, it, vi } from "@effect/vitest";
 import type { OrchestrationReadModel } from "@k1tools/contracts";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Command from "effect/unstable/cli/Command";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -148,6 +149,100 @@ it.layer(testLayer)("server CLI command", (it) => {
       assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, false);
       assert.equal(resolvedConfig?.logWebSocketEvents, true);
       assert.equal(findAvailablePort.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("prefers --mode over K1CODE_MODE", () =>
+  const openBootstrapFd = Effect.fn(function* (payload: Record<string, unknown>) {
+    const fs = yield* FileSystem.FileSystem;
+    const filePath = yield* fs.makeTempFileScoped({ prefix: "k1-bootstrap-", suffix: ".ndjson" });
+    yield* fs.writeFileString(filePath, `${JSON.stringify(payload)}\n`);
+    const { fd } = yield* fs.open(filePath, { flag: "r" });
+    return fd;
+  });
+
+  it.effect("recognizes bootstrap fd from environment config", () =>
+    Effect.gen(function* () {
+      const fd = yield* openBootstrapFd({ authToken: "bootstrap-token" });
+
+      yield* runCli([], {
+        K1CODE_MODE: "web",
+        K1CODE_BOOTSTRAP_FD: String(fd),
+        K1CODE_AUTH_TOKEN: "env-token",
+        K1CODE_NO_BROWSER: "true",
+      });
+
+      assert.equal(start.mock.calls.length, 1);
+      assert.equal(resolvedConfig?.mode, "web");
+      assert.equal(resolvedConfig?.authToken, "env-token");
+    }),
+  );
+
+  it.effect("uses bootstrap envelope values as fallbacks when CLI and env are absent", () =>
+    Effect.gen(function* () {
+      const fd = yield* openBootstrapFd({
+        mode: "desktop",
+        port: 4888,
+        host: "127.0.0.2",
+        k1Home: "/tmp/k1-bootstrap-home",
+        devUrl: "http://127.0.0.1:5173",
+        noBrowser: true,
+        authToken: "bootstrap-token",
+        autoBootstrapProjectFromCwd: false,
+        logWebSocketEvents: true,
+      });
+
+      yield* runCli([], {
+        K1CODE_BOOTSTRAP_FD: String(fd),
+      });
+
+      assert.equal(start.mock.calls.length, 1);
+      assert.equal(resolvedConfig?.mode, "desktop");
+      assert.equal(resolvedConfig?.port, 4888);
+      assert.equal(resolvedConfig?.host, "127.0.0.2");
+      assert.equal(resolvedConfig?.baseDir, "/tmp/k1-bootstrap-home");
+      assert.equal(resolvedConfig?.stateDir, "/tmp/k1-bootstrap-home/dev");
+      assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
+      assert.equal(resolvedConfig?.noBrowser, true);
+      assert.equal(resolvedConfig?.authToken, "bootstrap-token");
+      assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, false);
+      assert.equal(resolvedConfig?.logWebSocketEvents, true);
+    }),
+  );
+
+  it.effect("applies CLI then env precedence over bootstrap envelope values", () =>
+    Effect.gen(function* () {
+      const fd = yield* openBootstrapFd({
+        mode: "desktop",
+        port: 4888,
+        host: "127.0.0.2",
+        k1Home: "/tmp/k1-bootstrap-home",
+        devUrl: "http://127.0.0.1:5173",
+        noBrowser: false,
+        authToken: "bootstrap-token",
+        autoBootstrapProjectFromCwd: false,
+        logWebSocketEvents: false,
+      });
+
+      yield* runCli(["--port", "4999", "--host", "0.0.0.0", "--auth-token", "cli-token"], {
+        K1CODE_MODE: "web",
+        K1CODE_BOOTSTRAP_FD: String(fd),
+        K1CODE_HOME: "/tmp/k1-env-home",
+        K1CODE_NO_BROWSER: "true",
+        K1CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD: "true",
+        K1CODE_LOG_WS_EVENTS: "true",
+      });
+
+      assert.equal(start.mock.calls.length, 1);
+      assert.equal(resolvedConfig?.mode, "web");
+      assert.equal(resolvedConfig?.port, 4999);
+      assert.equal(resolvedConfig?.host, "0.0.0.0");
+      assert.equal(resolvedConfig?.baseDir, "/tmp/k1-env-home");
+      assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
+      assert.equal(resolvedConfig?.noBrowser, true);
+      assert.equal(resolvedConfig?.authToken, "cli-token");
+      assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, true);
+      assert.equal(resolvedConfig?.logWebSocketEvents, true);
     }),
   );
 

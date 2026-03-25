@@ -147,30 +147,41 @@ export function createDevRunnerEnv({
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;
     const resolvedBaseDir = yield* resolveBaseDir(k1Home);
+    const isDesktopMode = mode === "dev:desktop";
 
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
-      K1CODE_PORT: String(serverPort),
       PORT: String(webPort),
       ELECTRON_RENDERER_PORT: String(webPort),
-      VITE_WS_URL: `ws://localhost:${serverPort}`,
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
       K1CODE_HOME: resolvedBaseDir,
     };
 
-    if (host !== undefined) {
+    if (!isDesktopMode) {
+      output.K1CODE_PORT = String(serverPort);
+      output.VITE_WS_URL = `ws://localhost:${serverPort}`;
+    } else {
+      delete output.K1CODE_PORT;
+      delete output.VITE_WS_URL;
+      delete output.K1CODE_AUTH_TOKEN;
+      delete output.K1CODE_MODE;
+      delete output.K1CODE_NO_BROWSER;
+      delete output.K1CODE_HOST;
+    }
+
+    if (!isDesktopMode && host !== undefined) {
       output.K1CODE_HOST = host;
     }
 
-    if (authToken !== undefined) {
+    if (!isDesktopMode && authToken !== undefined) {
       output.K1CODE_AUTH_TOKEN = authToken;
-    } else {
+    } else if (!isDesktopMode) {
       delete output.K1CODE_AUTH_TOKEN;
     }
 
-    if (noBrowser !== undefined) {
+    if (!isDesktopMode && noBrowser !== undefined) {
       output.K1CODE_NO_BROWSER = noBrowser ? "1" : "0";
-    } else {
+    } else if (!isDesktopMode) {
       delete output.K1CODE_NO_BROWSER;
     }
 
@@ -193,6 +204,10 @@ export function createDevRunnerEnv({
 
     if (mode === "dev:server" || mode === "dev:web") {
       output.K1CODE_MODE = "web";
+      delete output.K1CODE_DESKTOP_WS_URL;
+    }
+
+    if (isDesktopMode) {
       delete output.K1CODE_DESKTOP_WS_URL;
     }
 
