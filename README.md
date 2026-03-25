@@ -1,17 +1,78 @@
 # K1 Code
 
-K1 Code is a fork of K1 Code which is a minimal web GUI for coding agents (currently Codex, Claude and Gemini, more coming soon).
+K1 Code is a minimal desktop UI for interacting with coding agents like Codex, Claude, and Gemini — all in one place.
 
-## How to use
+It focuses on speed, simplicity, and a clean workflow without unnecessary clutter.
 
-> [!WARNING]
-> You need to have [Codex CLI](https://github.com/openai/codex) installed and authorized for K1 Code to work with Codex.
-> Same for both Gemini with [Gemini CLI](https://github.com/google-gemini/gemini-cli) and Claude with [Claude Code](https://github.com/anthropics/claude-code)
+---
 
-Right now only editing the desktop app which is below,
+## ✨ Features
 
-Install the [desktop app from the Releases page](https://github.com/kkorenn/k1code/releases)
+- 🔌 Multi-agent support  
+  - Codex (OpenAI)  
+  - Claude (Anthropic)  
+  - Gemini (Google)  
+- ⚡ Lightweight desktop app (Tauri)
+- 🧠 Streamed responses (fast feedback)
+- 💻 Clean, minimal interface
+- 🔄 Easily extendable for more agents
 
-## Contributions
+---
 
-if you make a pull request I will most likely look at it, even tho I don't believe anyone will make one.
+## 📦 Installation
+
+Download the latest desktop build from the releases page:
+
+👉 https://github.com/kkorenn/k1code/releases
+
+---
+
+## ⚠️ Requirements
+
+You must install and authenticate the CLI tools for each provider:
+
+- Codex → https://github.com/openai/codex  
+- Gemini → https://github.com/google-gemini/gemini-cli  
+- Claude → https://github.com/anthropics/claude-code  
+
+K1 Code uses these locally — it does NOT replace them.
+
+---
+
+## 🚀 Usage
+
+1. Install the desktop app
+2. Make sure your CLI tools are installed & logged in
+3. Launch K1 Code
+4. Start chatting with your coding agents
+
+---
+
+## 🖼 Screenshots
+
+<!-- Add your images here -->
+
+![Main UI](./assets/main-ui.png)
+![Agent Chat](./assets/chat.png)
+
+---
+
+## 🛠 Tech Stack
+
+- Tauri (desktop shell)
+- React + Vite (frontend)
+- Node / Bun (tooling)
+
+---
+
+## 🤝 Contributing
+
+Pull requests are welcome.
+
+Even small improvements or fixes are appreciated.
+
+---
+
+## 📄 License
+
+MIT © 2026 Koren
