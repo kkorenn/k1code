@@ -11,7 +11,9 @@ It focuses on speed, simplicity, and a clean workflow without unnecessary clutte
 - 🔌 Multi-agent support  
   - Codex (OpenAI)  
   - Claude (Anthropic)  
-  - Gemini (Google)  
+  - Gemini (Google)
+  - Copilot (GitHub)
+  - OpenCode / Cursor
 - ⚡ Lightweight desktop app (Tauri)
 - 🧠 Streamed responses (fast feedback)
 - 💻 Clean, minimal interface
@@ -29,11 +31,33 @@ Download the latest desktop build from the releases page:
 
 ## ⚠️ Requirements
 
-You must install and authenticate the CLI tools for each provider:
+K1 Code relies on official CLI tools or local environments for each provider.  
+You must install and authenticate them before using the app.
 
-- Codex → https://github.com/openai/codex  
-- Gemini → https://github.com/google-gemini/gemini-cli  
-- Claude → https://github.com/anthropics/claude-code  
+### Required CLIs / Tools
+
+- **Codex (OpenAI)**  
+  https://github.com/openai/codex  
+
+- **Gemini (Google)**  
+  https://github.com/google-gemini/gemini-cli  
+
+- **Claude (Anthropic)**  
+  https://github.com/anthropics/claude-code  
+
+- **Copilot (GitHub)**  
+  https://github.com/features/copilot  
+
+- **Cursor**  
+  https://cursor.sh  
+
+- **OpenCode**  
+  https://opencode.ai  
+
+---
+
+> [!NOTE]
+> K1 Code does not replace these tools — it acts as a unified interface on top of them.
 
 K1 Code uses these locally — it does NOT replace them.
 
@@ -52,8 +76,7 @@ K1 Code uses these locally — it does NOT replace them.
 
 <!-- Add your images here -->
 
-![Main UI](./assets/main-ui.png)
-![Agent Chat](./assets/chat.png)
+![Main UI](./docs/screenshot.png)
 
 ---
 
