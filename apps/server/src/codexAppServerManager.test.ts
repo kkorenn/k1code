@@ -787,6 +787,69 @@ describe("respondToUserInput", () => {
     expect(request?.requestKind).toBe("file-read");
     expect(request?.method).toBe("item/fileRead/requestApproval");
   });
+
+  it("responds to dynamic tool call requests with a failed tool result", () => {
+    const manager = new CodexAppServerManager();
+    const context = {
+      session: {
+        sessionId: "sess_1",
+        provider: "codex",
+        status: "ready",
+        threadId: asThreadId("thread_1"),
+        resumeCursor: { threadId: "thread_1" },
+        createdAt: "2026-02-10T00:00:00.000Z",
+        updatedAt: "2026-02-10T00:00:00.000Z",
+      },
+      pendingApprovals: new Map(),
+      pendingUserInputs: new Map(),
+      collabReceiverTurns: new Map(),
+    };
+    const writeMessage = vi
+      .spyOn(manager as unknown as { writeMessage: (...args: unknown[]) => void }, "writeMessage")
+      .mockImplementation(() => {});
+    const emitEvent = vi
+      .spyOn(manager as unknown as { emitEvent: (...args: unknown[]) => void }, "emitEvent")
+      .mockImplementation(() => {});
+
+    (
+      manager as unknown as {
+        handleServerRequest: (context: unknown, request: Record<string, unknown>) => void;
+      }
+    ).handleServerRequest(context, {
+      jsonrpc: "2.0",
+      id: 42,
+      method: "item/tool/call",
+      params: {
+        threadId: "thread_1",
+        turnId: "turn_1",
+        callId: "call_1",
+        tool: "fetch_ticket",
+        arguments: { id: "ABC-123" },
+      },
+    });
+
+    expect(emitEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "request",
+        method: "item/tool/call",
+        threadId: "thread_1",
+        turnId: "turn_1",
+        itemId: "call_1",
+      }),
+    );
+    expect(writeMessage).toHaveBeenCalledWith(context, {
+      id: 42,
+      result: {
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Dynamic tool 'fetch_ticket' is not supported by this client.",
+          },
+        ],
+        success: false,
+      },
+    });
+  });
 });
 
 describe("collab child conversation routing", () => {

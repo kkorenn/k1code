@@ -1953,7 +1953,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("emits ordered progress events for commit hooks", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("k1code-git-manager-");
       yield* initRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, "hooked.txt"), "hooked\n");
       fs.writeFileSync(
@@ -2016,7 +2016,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("emits action_failed when a commit hook rejects", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("k1code-git-manager-");
       yield* initRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, "hook-failure.txt"), "broken\n");
       fs.writeFileSync(

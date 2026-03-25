@@ -13,7 +13,13 @@ import type { ChatAttachment } from "@k1tools/contracts";
 import type { TextGenerationError } from "../Errors.ts";
 
 /** Providers that support git text generation (commit messages, PR content, branch names). */
-export type TextGenerationProvider = "codex" | "claudeAgent" | "gemini" | "cursor" | "openCode";
+export type TextGenerationProvider =
+  | "codex"
+  | "claudeAgent"
+  | "gemini"
+  | "cursor"
+  | "copilot"
+  | "openCode";
 
 export interface CommitMessageGenerationInput {
   cwd: string;

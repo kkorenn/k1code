@@ -4,6 +4,8 @@ const GEMINI_AUTH_REQUIRED_MESSAGE =
   'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.';
 const CURSOR_AUTH_REQUIRED_MESSAGE =
   "Cursor is not authenticated. Run `cursor-agent login` and try again.";
+const COPILOT_AUTH_REQUIRED_MESSAGE =
+  "Copilot is not authenticated. Run `copilot auth login` and try again.";
 const OPENCODE_AUTH_REQUIRED_MESSAGE =
   "OpenCode is not authenticated. Run `opencode auth login` and try again.";
 
@@ -74,6 +76,20 @@ function isOpenCodeAuthError(raw: string, provider: ProviderKind | null): boolea
   );
 }
 
+function isCopilotAuthError(raw: string, provider: ProviderKind | null): boolean {
+  if (provider !== "copilot") {
+    return false;
+  }
+  const lower = raw.toLowerCase();
+  return (
+    lower.includes("not authenticated") ||
+    lower.includes("not logged in") ||
+    lower.includes("authentication required") ||
+    lower.includes("run `copilot auth login`") ||
+    lower.includes("run copilot auth login")
+  );
+}
+
 export function normalizeProviderErrorMessage(
   message: string | null | undefined,
   provider: ProviderKind | null = null,
@@ -97,6 +113,9 @@ export function normalizeProviderErrorMessage(
   if (isCursorAuthError(normalized, provider)) {
     return CURSOR_AUTH_REQUIRED_MESSAGE;
   }
+  if (isCopilotAuthError(normalized, provider)) {
+    return COPILOT_AUTH_REQUIRED_MESSAGE;
+  }
   if (isOpenCodeAuthError(normalized, provider)) {
     return OPENCODE_AUTH_REQUIRED_MESSAGE;
   }
@@ -117,6 +136,7 @@ export function isLikelyProviderAuthError(
   }
   if (
     normalized === CURSOR_AUTH_REQUIRED_MESSAGE ||
+    normalized === COPILOT_AUTH_REQUIRED_MESSAGE ||
     normalized === OPENCODE_AUTH_REQUIRED_MESSAGE
   ) {
     return true;
@@ -130,6 +150,7 @@ export function isLikelyProviderAuthError(
     lower.includes("run `codex login`") ||
     lower.includes("run `claude auth login`") ||
     lower.includes("run `cursor-agent login`") ||
+    lower.includes("run `copilot auth login`") ||
     lower.includes("run `opencode auth login`")
   );
 }

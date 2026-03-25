@@ -100,6 +100,7 @@ describe("resolveAppModelSelection", () => {
           claudeAgent: [],
           gemini: [],
           cursor: [],
+          copilot: [],
           openCode: [],
         },
         "galapagos-alpha",
@@ -111,7 +112,7 @@ describe("resolveAppModelSelection", () => {
     expect(
       resolveAppModelSelection(
         "codex",
-        { codex: [], claudeAgent: [], gemini: [], cursor: [], openCode: [] },
+        { codex: [], claudeAgent: [], gemini: [], cursor: [], copilot: [], openCode: [] },
         "",
       ),
     ).toBe("gpt-5.4");
@@ -121,7 +122,7 @@ describe("resolveAppModelSelection", () => {
     expect(
       resolveAppModelSelection(
         "codex",
-        { codex: [], claudeAgent: [], gemini: [], cursor: [], openCode: [] },
+        { codex: [], claudeAgent: [], gemini: [], cursor: [], copilot: [], openCode: [] },
         "GPT-5.3 Codex",
       ),
     ).toBe("gpt-5.3-codex");
@@ -131,7 +132,7 @@ describe("resolveAppModelSelection", () => {
     expect(
       resolveAppModelSelection(
         "claudeAgent",
-        { codex: [], claudeAgent: [], gemini: [], cursor: [], openCode: [] },
+        { codex: [], claudeAgent: [], gemini: [], cursor: [], copilot: [], openCode: [] },
         "sonnet",
       ),
     ).toBe("claude-sonnet-4-6");
@@ -141,7 +142,7 @@ describe("resolveAppModelSelection", () => {
     expect(
       resolveAppModelSelection(
         "codex",
-        { codex: [], claudeAgent: [], gemini: [], cursor: [], openCode: [] },
+        { codex: [], claudeAgent: [], gemini: [], cursor: [], copilot: [], openCode: [] },
         "custom/selected-model",
       ),
     ).toBe("custom/selected-model");
@@ -181,6 +182,8 @@ describe("getProviderStartOptions", () => {
         codexHomePath: "/Users/you/.codex",
         geminiBinaryPath: "/usr/local/bin/gemini",
         cursorBinaryPath: "",
+        copilotBinaryPath: "/usr/local/bin/copilot",
+        copilotConfigDir: "/Users/you/.config/github-copilot",
         openCodeBinaryPath: "/usr/local/bin/opencode",
       }),
     ).toEqual({
@@ -192,6 +195,10 @@ describe("getProviderStartOptions", () => {
       },
       gemini: {
         binaryPath: "/usr/local/bin/gemini",
+      },
+      copilot: {
+        binaryPath: "/usr/local/bin/copilot",
+        configDir: "/Users/you/.config/github-copilot",
       },
       openCode: {
         binaryPath: "/usr/local/bin/opencode",
@@ -207,6 +214,8 @@ describe("getProviderStartOptions", () => {
         codexHomePath: "",
         geminiBinaryPath: "",
         cursorBinaryPath: "",
+        copilotBinaryPath: "",
+        copilotConfigDir: "",
         openCodeBinaryPath: "",
       }),
     ).toBeUndefined();
@@ -220,6 +229,7 @@ describe("getProviderAvailabilityByProvider", () => {
     developerProviderAvailabilityClaude: "auto",
     developerProviderAvailabilityGemini: "auto",
     developerProviderAvailabilityCursor: "auto",
+    developerProviderAvailabilityCopilot: "auto",
     developerProviderAvailabilityOpenCode: "auto",
   } as const;
 
@@ -230,6 +240,7 @@ describe("getProviderAvailabilityByProvider", () => {
         { provider: "claudeAgent", available: false },
         { provider: "gemini", available: true },
         { provider: "cursor", available: false },
+        { provider: "copilot", available: true },
         { provider: "openCode", available: true },
       ]),
     ).toEqual({
@@ -237,6 +248,7 @@ describe("getProviderAvailabilityByProvider", () => {
       claudeAgent: false,
       gemini: true,
       cursor: false,
+      copilot: true,
       openCode: true,
     });
   });
@@ -255,6 +267,7 @@ describe("getProviderAvailabilityByProvider", () => {
           { provider: "claudeAgent", available: false },
           { provider: "gemini", available: true },
           { provider: "cursor", available: true },
+          { provider: "copilot", available: true },
           { provider: "openCode", available: true },
         ],
       ),
@@ -263,6 +276,7 @@ describe("getProviderAvailabilityByProvider", () => {
       claudeAgent: true,
       gemini: true,
       cursor: true,
+      copilot: true,
       openCode: true,
     });
   });
@@ -274,6 +288,7 @@ describe("provider-indexed custom model settings", () => {
     customClaudeModels: ["claude/custom-opus"],
     customGeminiModels: ["gemini/custom-pro"],
     customCursorModels: ["cursor/custom-pro"],
+    customCopilotModels: ["copilot/custom-pro"],
     customOpenCodeModels: ["opencode/custom-pro"],
   } as const;
 
@@ -283,6 +298,7 @@ describe("provider-indexed custom model settings", () => {
       "claudeAgent",
       "gemini",
       "cursor",
+      "copilot",
       "openCode",
     ]);
   });
@@ -292,6 +308,7 @@ describe("provider-indexed custom model settings", () => {
     expect(getCustomModelsForProvider(settings, "claudeAgent")).toEqual(["claude/custom-opus"]);
     expect(getCustomModelsForProvider(settings, "gemini")).toEqual(["gemini/custom-pro"]);
     expect(getCustomModelsForProvider(settings, "cursor")).toEqual(["cursor/custom-pro"]);
+    expect(getCustomModelsForProvider(settings, "copilot")).toEqual(["copilot/custom-pro"]);
     expect(getCustomModelsForProvider(settings, "openCode")).toEqual(["opencode/custom-pro"]);
   });
 
@@ -301,6 +318,7 @@ describe("provider-indexed custom model settings", () => {
       customClaudeModels: ["claude/default-opus"],
       customGeminiModels: ["gemini/default-pro"],
       customCursorModels: ["cursor/default-pro"],
+      customCopilotModels: ["copilot/default-pro"],
       customOpenCodeModels: ["opencode/default-pro"],
     } as const;
 
@@ -310,6 +328,7 @@ describe("provider-indexed custom model settings", () => {
     ]);
     expect(getDefaultCustomModelsForProvider(defaults, "gemini")).toEqual(["gemini/default-pro"]);
     expect(getDefaultCustomModelsForProvider(defaults, "cursor")).toEqual(["cursor/default-pro"]);
+    expect(getDefaultCustomModelsForProvider(defaults, "copilot")).toEqual(["copilot/default-pro"]);
     expect(getDefaultCustomModelsForProvider(defaults, "openCode")).toEqual([
       "opencode/default-pro",
     ]);
@@ -345,12 +364,19 @@ describe("provider-indexed custom model settings", () => {
     });
   });
 
+  it("patches custom models for copilot", () => {
+    expect(patchCustomModels("copilot", ["copilot/custom-pro"])).toEqual({
+      customCopilotModels: ["copilot/custom-pro"],
+    });
+  });
+
   it("builds a complete provider-indexed custom model record", () => {
     expect(getCustomModelsByProvider(settings)).toEqual({
       codex: ["custom/codex-model"],
       claudeAgent: ["claude/custom-opus"],
       gemini: ["gemini/custom-pro"],
       cursor: ["cursor/custom-pro"],
+      copilot: ["copilot/custom-pro"],
       openCode: ["opencode/custom-pro"],
     });
   });
@@ -371,6 +397,9 @@ describe("provider-indexed custom model settings", () => {
       modelOptionsByProvider.cursor.some((option) => option.slug === "cursor/custom-pro"),
     ).toBe(true);
     expect(
+      modelOptionsByProvider.copilot.some((option) => option.slug === "copilot/custom-pro"),
+    ).toBe(true);
+    expect(
       modelOptionsByProvider.openCode.some((option) => option.slug === "opencode/custom-pro"),
     ).toBe(true);
   });
@@ -381,6 +410,7 @@ describe("provider-indexed custom model settings", () => {
       customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
       customGeminiModels: [" gemini-2.5-flash ", "gemini/custom-pro", "gemini/custom-pro"],
       customCursorModels: [" claude-4.5-sonnet ", "cursor/custom-pro", "cursor/custom-pro"],
+      customCopilotModels: [" gpt-5.4-mini ", "copilot/custom-pro", "copilot/custom-pro"],
       customOpenCodeModels: [" openai/gpt-5.4 ", "opencode/custom-pro", "opencode/custom-pro"],
     });
 
@@ -407,6 +437,12 @@ describe("provider-indexed custom model settings", () => {
       modelOptionsByProvider.cursor.some((option) => option.slug === "claude-4.5-sonnet"),
     ).toBe(true);
     expect(
+      modelOptionsByProvider.copilot.filter((option) => option.slug === "copilot/custom-pro"),
+    ).toHaveLength(1);
+    expect(modelOptionsByProvider.copilot.some((option) => option.slug === "gpt-5.4-mini")).toBe(
+      true,
+    );
+    expect(
       modelOptionsByProvider.openCode.filter((option) => option.slug === "opencode/custom-pro"),
     ).toHaveLength(1);
     expect(modelOptionsByProvider.openCode.some((option) => option.slug === "openai/gpt-5.4")).toBe(
@@ -431,6 +467,8 @@ describe("AppSettingsSchema", () => {
       codexBinaryPath: "/usr/local/bin/codex",
       geminiBinaryPath: "",
       cursorBinaryPath: "",
+      copilotBinaryPath: "",
+      copilotConfigDir: "",
       openCodeBinaryPath: "",
       codexHomePath: "",
       newProjectBasePath: "",
@@ -448,12 +486,14 @@ describe("AppSettingsSchema", () => {
       customClaudeModels: [],
       customGeminiModels: [],
       customCursorModels: [],
+      customCopilotModels: [],
       customOpenCodeModels: [],
       developerModeEnabled: false,
       developerProviderAvailabilityCodex: "auto",
       developerProviderAvailabilityClaude: "auto",
       developerProviderAvailabilityGemini: "auto",
       developerProviderAvailabilityCursor: "auto",
+      developerProviderAvailabilityCopilot: "auto",
       developerProviderAvailabilityOpenCode: "auto",
     });
   });

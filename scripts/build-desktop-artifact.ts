@@ -2,6 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { copyFile, lstat, mkdir, readdir, readlink, rm, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import rootPackageJson from "../package.json" with { type: "json" };
@@ -63,6 +64,7 @@ const PLATFORM_CONFIG: Record<typeof BuildPlatform.Type, PlatformConfig> = {
     archChoices: ["x64", "arm64"],
   },
 };
+const DEFAULT_DESKTOP_UPDATE_REPOSITORY = "kkorenn/k1code";
 
 interface BuildCliInput {
   readonly platform: Option.Option<typeof BuildPlatform.Type>;
@@ -149,6 +151,32 @@ function withBunOnPath(env: NodeJS.ProcessEnv, bunExecutable: string): NodeJS.Pr
 }
 
 const BunExecutable = resolveBunExecutable();
+
+async function copyPathPreservingSymlinkTargets(
+  sourcePath: string,
+  destinationPath: string,
+): Promise<void> {
+  const sourceStat = await lstat(sourcePath);
+
+  if (sourceStat.isSymbolicLink()) {
+    const linkTarget = await readlink(sourcePath);
+    await rm(destinationPath, { force: true, recursive: true });
+    await symlink(linkTarget, destinationPath);
+    return;
+  }
+
+  if (sourceStat.isDirectory()) {
+    await rm(destinationPath, { force: true, recursive: true });
+    await mkdir(destinationPath, { recursive: true });
+    const entries = await readdir(sourcePath);
+    for (const entry of entries) {
+      await copyPathPreservingSymlinkTargets(join(sourcePath, entry), join(destinationPath, entry));
+    }
+    return;
+  }
+
+  await copyFile(sourcePath, destinationPath);
+}
 
 function getDefaultArch(platform: typeof BuildPlatform.Type): typeof BuildArch.Type {
   const config = PLATFORM_CONFIG[platform];
@@ -297,6 +325,15 @@ const resolveBooleanFlag = (flag: Option.Option<boolean>, envValue: boolean) =>
 const mergeOptions = <A>(a: Option.Option<A>, b: Option.Option<A>, defaultValue: A) =>
   Option.getOrElse(a, () => Option.getOrElse(b, () => defaultValue));
 
+function normalizeBuildTarget(platform: typeof BuildPlatform.Type, target: string): string {
+  const normalizedTarget = target.trim();
+  if (platform === "mac" && normalizedTarget.toLowerCase() === "app") {
+    // electron-builder uses "dir" for unpackaged .app output.
+    return "dir";
+  }
+  return normalizedTarget;
+}
+
 const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (input: BuildCliInput) {
   const path = yield* Path.Path;
   const repoRoot = yield* RepoRoot;
@@ -314,7 +351,10 @@ const resolveBuildOptions = Effect.fn("resolveBuildOptions")(function* (input: B
     });
   }
 
-  const target = mergeOptions(input.target, env.target, PLATFORM_CONFIG[platform].defaultTarget);
+  const target = normalizeBuildTarget(
+    platform,
+    mergeOptions(input.target, env.target, PLATFORM_CONFIG[platform].defaultTarget),
+  );
   const arch = mergeOptions(input.arch, env.arch, getDefaultArch(platform));
   const version = mergeOptions(input.buildVersion, env.version, undefined);
   const outputDir = path.resolve(repoRoot, mergeOptions(input.outputDir, env.outputDir, "release"));
@@ -514,8 +554,7 @@ function resolveGitHubPublishConfig():
   const rawRepo =
     process.env.K1CODE_DESKTOP_UPDATE_REPOSITORY?.trim() ||
     process.env.GITHUB_REPOSITORY?.trim() ||
-    "";
-  if (!rawRepo) return undefined;
+    DEFAULT_DESKTOP_UPDATE_REPOSITORY;
 
   const [owner, repo, ...rest] = rawRepo.split("/");
   if (!owner || !repo || rest.length > 0) return undefined;
@@ -815,11 +854,26 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   for (const entry of stageEntries) {
     const from = path.join(stageDistDir, entry);
     const stat = yield* fs.stat(from).pipe(Effect.catch(() => Effect.succeed(null)));
-    if (!stat || stat.type !== "File") continue;
-
     const to = path.join(options.outputDir, entry);
-    yield* fs.copyFile(from, to);
-    copiedArtifacts.push(to);
+    if (!stat) continue;
+
+    if (stat.type === "File") {
+      yield* fs.copyFile(from, to);
+      copiedArtifacts.push(to);
+      continue;
+    }
+
+    if (stat.type === "Directory") {
+      yield* Effect.tryPromise({
+        try: () => copyPathPreservingSymlinkTargets(from, to),
+        catch: (cause) =>
+          new BuildScriptError({
+            message: `Failed to copy directory artifact '${entry}' from ${from} to ${to}.`,
+            cause,
+          }),
+      });
+      copiedArtifacts.push(to);
+    }
   }
 
   if (copiedArtifacts.length === 0) {

@@ -50,6 +50,12 @@ const CURSOR_MODEL_DISCOVERY_COMMANDS: ReadonlyArray<ModelDiscoveryCommand> = [
   { binary: "cursor-agent", args: ["-p", "/model", "--force", "--output-format", "text"] },
 ];
 
+const COPILOT_MODEL_DISCOVERY_COMMANDS: ReadonlyArray<ModelDiscoveryCommand> = [
+  { binary: "copilot", args: ["models"] },
+  { binary: "copilot", args: ["model", "list"] },
+  { binary: "copilot", args: ["--help"] },
+];
+
 const OPENCODE_MODEL_DISCOVERY_COMMANDS: ReadonlyArray<ModelDiscoveryCommand> = [
   { binary: "opencode", args: ["models", "--refresh"], timeoutMs: 8_000 },
   { binary: "opencode", args: ["models"] },
@@ -149,6 +155,7 @@ function emptyProviderModels(): ProviderModelOptionsByProvider {
     claudeAgent: [],
     gemini: [],
     cursor: [],
+    copilot: [],
     openCode: [],
   };
 }
@@ -555,6 +562,16 @@ async function discoverCursorModels(): Promise<ProviderModelOption[]> {
   }
 }
 
+async function discoverCopilotModels(): Promise<ProviderModelOption[]> {
+  try {
+    return await discoverModelsFromCommands(COPILOT_MODEL_DISCOVERY_COMMANDS, (output) =>
+      parseModelSlugLines(output, isCursorModelCandidate),
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function discoverOpenCodeModels(): Promise<ProviderModelOption[]> {
   try {
     return await discoverModelsFromCommands(OPENCODE_MODEL_DISCOVERY_COMMANDS, (output) =>
@@ -566,11 +583,12 @@ async function discoverOpenCodeModels(): Promise<ProviderModelOption[]> {
 }
 
 async function discoverProviderModelsUncached(): Promise<ProviderModelOptionsByProvider> {
-  const [codex, claudeAgent, gemini, cursor, openCode] = await Promise.all([
+  const [codex, claudeAgent, gemini, cursor, copilot, openCode] = await Promise.all([
     discoverCodexModels(),
     discoverClaudeModels(),
     discoverGeminiModels(),
     discoverCursorModels(),
+    discoverCopilotModels(),
     discoverOpenCodeModels(),
   ]);
 
@@ -579,6 +597,7 @@ async function discoverProviderModelsUncached(): Promise<ProviderModelOptionsByP
     claudeAgent,
     gemini,
     cursor,
+    copilot,
     openCode,
   };
 }

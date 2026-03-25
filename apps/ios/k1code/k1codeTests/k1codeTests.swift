@@ -1,0 +1,19 @@
+//
+//  k1codeTests.swift
+//  k1codeTests
+//
+//  Created by Koren on 3/25/26.
+//
+
+import Testing
+@testable import k1code
+
+struct k1codeTests {
+
+    @Test func example() async throws {
+        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+        // Swift Testing Documentation
+        // https://developer.apple.com/documentation/testing
+    }
+
+}

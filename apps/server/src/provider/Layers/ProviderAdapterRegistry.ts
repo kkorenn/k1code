@@ -17,6 +17,7 @@ import {
 } from "../Services/ProviderAdapterRegistry.ts";
 import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
+import { CopilotAdapter } from "../Services/CopilotAdapter.ts";
 import { CursorAdapter } from "../Services/CursorAdapter.ts";
 import { GeminiAdapter } from "../Services/GeminiAdapter.ts";
 import { OpenCodeAdapter } from "../Services/OpenCodeAdapter.ts";
@@ -35,6 +36,7 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
             yield* ClaudeAdapter,
             yield* GeminiAdapter,
             yield* CursorAdapter,
+            yield* CopilotAdapter,
             yield* OpenCodeAdapter,
           ];
     const byProvider = new Map(adapters.map((adapter) => [adapter.provider, adapter]));

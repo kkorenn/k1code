@@ -15,6 +15,7 @@ import {
 } from "@k1tools/shared/model";
 import type { ReactNode } from "react";
 import { ClaudeTraitsMenuContent, ClaudeTraitsPicker } from "./ClaudeTraitsPicker";
+import { CopilotTraitsMenuContent, CopilotTraitsPicker } from "./CopilotTraitsPicker";
 import { CodexTraitsMenuContent, CodexTraitsPicker } from "./CodexTraitsPicker";
 
 export type ComposerProviderStateInput = {
@@ -121,6 +122,23 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
     }),
     renderTraitsMenuContent: () => null,
     renderTraitsPicker: () => null,
+  },
+  copilot: {
+    getState: ({ modelOptions }) => {
+      const promptEffort =
+        resolveReasoningEffortForProvider("copilot", modelOptions?.copilot?.reasoningEffort) ??
+        getDefaultReasoningEffort("copilot");
+
+      return {
+        provider: "copilot",
+        promptEffort,
+        modelOptionsForDispatch: modelOptions?.copilot
+          ? { copilot: modelOptions.copilot }
+          : undefined,
+      };
+    },
+    renderTraitsMenuContent: ({ threadId }) => <CopilotTraitsMenuContent threadId={threadId} />,
+    renderTraitsPicker: ({ threadId }) => <CopilotTraitsPicker threadId={threadId} />,
   },
   openCode: {
     getState: () => ({

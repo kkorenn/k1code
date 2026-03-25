@@ -708,6 +708,48 @@ describe("deriveWorkLogEntries", () => {
     expect(entry?.command).toBe("bun run lint");
   });
 
+  it("unwraps shell-wrapper command strings for display", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "shell-wrapped-command-string",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command: '/bin/zsh -lc "bun run lint"',
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.command).toBe("bun run lint");
+  });
+
+  it("unwraps shell-wrapper command arrays for display", () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "shell-wrapped-command-array",
+        kind: "tool.completed",
+        summary: "Ran command",
+        payload: {
+          itemType: "command_execution",
+          data: {
+            item: {
+              command: ["/bin/zsh", "-lc", "rg -n foo src"],
+            },
+          },
+        },
+      }),
+    ];
+
+    const [entry] = deriveWorkLogEntries(activities, undefined);
+    expect(entry?.command).toBe("rg -n foo src");
+  });
+
   it("keeps compact Codex tool metadata used for icons and labels", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

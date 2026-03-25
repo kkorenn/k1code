@@ -26,7 +26,7 @@ import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
-import { inferProviderForModel } from "@k1tools/shared/model";
+import { getModelOptions, inferProviderForModel, normalizeModelSlug } from "@k1tools/shared/model";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -139,6 +139,20 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
   return `${WORKTREE_BRANCH_PREFIX}/${safeFragment}`;
 }
 
+function isBuiltInModelForProvider(provider: ProviderKind, model: string | undefined): boolean {
+  const normalized = normalizeModelSlug(model, provider);
+  return (
+    normalized !== null && getModelOptions(provider).some((option) => option.slug === normalized)
+  );
+}
+
+export function resolvePreferredProvider(
+  currentProvider: ProviderKind | undefined,
+  threadProvider: ProviderKind,
+): ProviderKind {
+  return currentProvider ?? threadProvider;
+}
+
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
@@ -233,8 +247,23 @@ const make = Effect.gen(function* () {
     )
       ? thread.session.providerName
       : undefined;
-    const threadProvider: ProviderKind = currentProvider ?? inferProviderForModel(thread.model);
-    if (options?.provider !== undefined && options.provider !== threadProvider) {
+    const defaultThreadProvider = inferProviderForModel(thread.model);
+    const isThreadProviderLocked = currentProvider !== undefined || thread.latestTurn !== null;
+    const requestedProvider =
+      options?.provider ??
+      (options?.model !== undefined
+        ? inferProviderForModel(options.model, defaultThreadProvider)
+        : undefined);
+    const threadProvider: ProviderKind =
+      currentProvider ??
+      (isThreadProviderLocked
+        ? defaultThreadProvider
+        : (requestedProvider ?? defaultThreadProvider));
+    if (
+      isThreadProviderLocked &&
+      options?.provider !== undefined &&
+      options.provider !== threadProvider
+    ) {
       return yield* new ProviderAdapterRequestError({
         provider: threadProvider,
         method: "thread.turn.start",
@@ -243,7 +272,8 @@ const make = Effect.gen(function* () {
     }
     if (
       options?.model !== undefined &&
-      inferProviderForModel(options.model, threadProvider) !== threadProvider
+      inferProviderForModel(options.model, threadProvider) !== threadProvider &&
+      !isBuiltInModelForProvider(threadProvider, options.model)
     ) {
       return yield* new ProviderAdapterRequestError({
         provider: threadProvider,
@@ -251,7 +281,10 @@ const make = Effect.gen(function* () {
         detail: `Model '${options.model}' does not belong to provider '${threadProvider}' for thread '${threadId}'.`,
       });
     }
-    const preferredProvider: ProviderKind = currentProvider ?? threadProvider;
+    const preferredProvider: ProviderKind = resolvePreferredProvider(
+      currentProvider,
+      threadProvider,
+    );
     const desiredModel = options?.model ?? thread.model;
     const effectiveCwd = resolveThreadWorkspaceCwd({
       thread,

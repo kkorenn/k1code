@@ -20,6 +20,7 @@ const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> =
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
   gemini: new Set(MODEL_OPTIONS_BY_PROVIDER.gemini.map((option) => option.slug)),
   cursor: new Set(MODEL_OPTIONS_BY_PROVIDER.cursor.map((option) => option.slug)),
+  copilot: new Set(MODEL_OPTIONS_BY_PROVIDER.copilot.map((option) => option.slug)),
   openCode: new Set(MODEL_OPTIONS_BY_PROVIDER.openCode.map((option) => option.slug)),
 };
 
@@ -29,6 +30,7 @@ const CLAUDE_HAIKU_4_5_MODEL = "claude-haiku-4-5";
 const PROVIDER_INFERENCE_MATCH_ORDER = [
   "gemini",
   "cursor",
+  "copilot",
   "openCode",
   "claudeAgent",
   "codex",
@@ -37,6 +39,7 @@ const PROVIDER_INFERENCE_AMBIGUITY_PRIORITY = [
   "claudeAgent",
   "codex",
   "openCode",
+  "copilot",
   "gemini",
   "cursor",
 ] as const satisfies ReadonlyArray<ProviderKind>;

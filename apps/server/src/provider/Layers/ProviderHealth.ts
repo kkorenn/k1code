@@ -29,11 +29,14 @@ const CODEX_PROVIDER = "codex" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 const GEMINI_PROVIDER = "gemini" as const;
 const CURSOR_PROVIDER = "cursor" as const;
+const COPILOT_PROVIDER = "copilot" as const;
 const OPENCODE_PROVIDER = "openCode" as const;
 const GEMINI_AUTH_REQUIRED_MESSAGE =
   'Gemini is not authenticated. Run `gemini`, choose "Sign in with Google", and complete login (or set `GEMINI_API_KEY`), then try again.';
 const CURSOR_AUTH_REQUIRED_MESSAGE =
   "Cursor is not authenticated. Run `cursor-agent login` and try again.";
+const COPILOT_AUTH_REQUIRED_MESSAGE =
+  "Copilot is not authenticated. Run `copilot auth login` and try again.";
 const OPENCODE_AUTH_REQUIRED_MESSAGE =
   "OpenCode is not authenticated. Run `opencode auth login` and try again.";
 
@@ -397,6 +400,27 @@ const runCursorCommand = (args: ReadonlyArray<string>) =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const command = ChildProcess.make("cursor-agent", [...args], {
+      shell: process.platform === "win32",
+    });
+
+    const child = yield* spawner.spawn(command);
+
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    return { stdout, stderr, code: exitCode } satisfies CommandResult;
+  }).pipe(Effect.scoped);
+
+const runCopilotCommand = (args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const command = ChildProcess.make("copilot", [...args], {
       shell: process.platform === "win32",
     });
 
@@ -994,6 +1018,183 @@ export const checkCursorProviderStatus: Effect.Effect<
   } satisfies ServerProviderStatus;
 });
 
+// ── Copilot health check ────────────────────────────────────────────
+
+export function parseCopilotAuthStatusFromOutput(result: CommandResult): {
+  readonly status: ServerProviderStatusState;
+  readonly authStatus: ServerProviderAuthStatus;
+  readonly message?: string;
+} {
+  const lowerOutput = `${result.stdout}\n${result.stderr}`.toLowerCase();
+
+  if (
+    lowerOutput.includes("unknown command") ||
+    lowerOutput.includes("unrecognized command") ||
+    lowerOutput.includes("unexpected argument")
+  ) {
+    return {
+      status: "warning",
+      authStatus: "unknown",
+      message: "Copilot authentication status command is unavailable in this Copilot version.",
+    };
+  }
+
+  if (
+    lowerOutput.includes("not logged in") ||
+    lowerOutput.includes("login required") ||
+    lowerOutput.includes("authentication required") ||
+    lowerOutput.includes("not authenticated") ||
+    lowerOutput.includes("run `copilot auth login`") ||
+    lowerOutput.includes("run copilot auth login")
+  ) {
+    return {
+      status: "error",
+      authStatus: "unauthenticated",
+      message: COPILOT_AUTH_REQUIRED_MESSAGE,
+    };
+  }
+
+  const parsedAuth = (() => {
+    const trimmed = result.stdout.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+      return { attemptedJsonParse: false as const, auth: undefined as boolean | undefined };
+    }
+    try {
+      return {
+        attemptedJsonParse: true as const,
+        auth: extractAuthBoolean(JSON.parse(trimmed)),
+      };
+    } catch {
+      return { attemptedJsonParse: false as const, auth: undefined as boolean | undefined };
+    }
+  })();
+
+  if (parsedAuth.auth === true) {
+    return { status: "ready", authStatus: "authenticated" };
+  }
+  if (parsedAuth.auth === false) {
+    return {
+      status: "error",
+      authStatus: "unauthenticated",
+      message: COPILOT_AUTH_REQUIRED_MESSAGE,
+    };
+  }
+  if (result.code === 0) {
+    return { status: "ready", authStatus: "authenticated" };
+  }
+  if (parsedAuth.attemptedJsonParse) {
+    return {
+      status: "warning",
+      authStatus: "unknown",
+      message:
+        "Could not verify Copilot authentication status from JSON output (missing auth marker).",
+    };
+  }
+
+  const detail = detailFromResult(result);
+  return {
+    status: "warning",
+    authStatus: "unknown",
+    message: detail
+      ? `Could not verify Copilot authentication status. ${detail}`
+      : "Could not verify Copilot authentication status.",
+  };
+}
+
+export const checkCopilotProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  const versionProbe = yield* runCopilotCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: isCommandMissingCause(error)
+        ? "Copilot CLI (`copilot`) is not installed or not on PATH."
+        : `Failed to execute Copilot CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Copilot CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `Copilot CLI is installed but failed to run. ${detail}`
+        : "Copilot CLI is installed but failed to run.",
+    };
+  }
+
+  const authProbe = yield* runCopilotCommand(["auth", "status"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(authProbe)) {
+    const error = authProbe.failure;
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message:
+        error instanceof Error
+          ? `Could not verify Copilot authentication status: ${error.message}.`
+          : "Could not verify Copilot authentication status.",
+    };
+  }
+
+  if (Option.isNone(authProbe.success)) {
+    return {
+      provider: COPILOT_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Could not verify Copilot authentication status. Timed out while running command.",
+    };
+  }
+
+  const parsed = parseCopilotAuthStatusFromOutput(authProbe.success.value);
+  return {
+    provider: COPILOT_PROVIDER,
+    status: parsed.status,
+    available: true,
+    authStatus: parsed.authStatus,
+    checkedAt,
+    ...(parsed.message ? { message: parsed.message } : {}),
+  } satisfies ServerProviderStatus;
+});
+
 // ── OpenCode health check ───────────────────────────────────────────
 
 export const checkOpenCodeProviderStatus: Effect.Effect<
@@ -1150,6 +1351,7 @@ export const ProviderHealthLive = Layer.effect(
         checkClaudeProviderStatus,
         checkGeminiProviderStatus,
         checkCursorProviderStatus,
+        checkCopilotProviderStatus,
         checkOpenCodeProviderStatus,
       ],
       { concurrency: "unbounded" },

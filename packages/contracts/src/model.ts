@@ -27,6 +27,11 @@ export type GeminiModelOptions = typeof GeminiModelOptions.Type;
 export const CursorModelOptions = Schema.Struct({});
 export type CursorModelOptions = typeof CursorModelOptions.Type;
 
+export const CopilotModelOptions = Schema.Struct({
+  reasoningEffort: Schema.optional(Schema.Literals(CODEX_REASONING_EFFORT_OPTIONS)),
+});
+export type CopilotModelOptions = typeof CopilotModelOptions.Type;
+
 export const OpenCodeModelOptions = Schema.Struct({});
 export type OpenCodeModelOptions = typeof OpenCodeModelOptions.Type;
 
@@ -35,6 +40,7 @@ export const ProviderModelOptions = Schema.Struct({
   claudeAgent: Schema.optional(ClaudeModelOptions),
   gemini: Schema.optional(GeminiModelOptions),
   cursor: Schema.optional(CursorModelOptions),
+  copilot: Schema.optional(CopilotModelOptions),
   openCode: Schema.optional(OpenCodeModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
@@ -50,6 +56,7 @@ export const ProviderModelOptionsByProvider = Schema.Struct({
   claudeAgent: Schema.Array(ProviderModelOption),
   gemini: Schema.Array(ProviderModelOption),
   cursor: Schema.Array(ProviderModelOption),
+  copilot: Schema.Array(ProviderModelOption),
   openCode: Schema.Array(ProviderModelOption),
 });
 export type ProviderModelOptionsByProvider = typeof ProviderModelOptionsByProvider.Type;
@@ -86,6 +93,12 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-5-mini", name: "GPT 5 Mini" },
     { slug: "claude-4.5-sonnet", name: "Claude 4.5 Sonnet" },
   ],
+  copilot: [
+    { slug: "gpt-5.4", name: "GPT-5.4" },
+    { slug: "gpt-5.4-mini", name: "GPT-5.4 Mini" },
+    { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+    { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+  ],
   openCode: [
     { slug: "openai/gpt-5.4", name: "OpenAI GPT 5.4" },
     { slug: "openai/gpt-5.3-codex", name: "OpenAI GPT 5.3 Codex" },
@@ -104,6 +117,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderKind, ModelSlug> = {
   claudeAgent: "claude-sonnet-4-6",
   gemini: "gemini-2.5-pro",
   cursor: "gpt-5",
+  copilot: "gpt-5.4",
   openCode: "openai/gpt-5.4",
 };
 
@@ -117,6 +131,7 @@ export const DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER: Record<ProviderKind,
   claudeAgent: "claude-haiku-4-5",
   gemini: "gemini-2.5-flash",
   cursor: "gpt-5-mini",
+  copilot: "gpt-5.4-mini",
   openCode: "openai/gpt-5.4",
 };
 
@@ -160,6 +175,10 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     sonnet: "claude-4.5-sonnet",
     "gpt-5.0": "gpt-5",
   },
+  copilot: {
+    "gpt-5.4-mini": "gpt-5.4-mini",
+    "claude-sonnet-4.6": "claude-sonnet-4-6",
+  },
   openCode: {
     "gpt-5.4": "openai/gpt-5.4",
     "gpt-5.3-codex": "openai/gpt-5.3-codex",
@@ -173,6 +192,7 @@ export const REASONING_EFFORT_OPTIONS_BY_PROVIDER = {
   claudeAgent: CLAUDE_CODE_EFFORT_OPTIONS,
   gemini: [],
   cursor: [],
+  copilot: CODEX_REASONING_EFFORT_OPTIONS,
   openCode: [],
 } as const satisfies Record<ProviderKind, readonly ProviderReasoningEffort[]>;
 
@@ -181,5 +201,6 @@ export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   claudeAgent: "high",
   gemini: "high",
   cursor: "high",
+  copilot: "high",
   openCode: "high",
 } as const satisfies Record<ProviderKind, ProviderReasoningEffort>;

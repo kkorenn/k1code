@@ -32,7 +32,6 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { Group, GroupSeparator } from "~/components/ui/group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -184,6 +183,7 @@ function getMenuActionDisabledReason({
 const COMMIT_DIALOG_TITLE = "Commit changes";
 const COMMIT_DIALOG_DESCRIPTION =
   "Review and confirm your commit. Leave the message blank to auto-generate one.";
+const QUICK_ACTION_LABEL_CLASS = "sr-only @md/header-actions:not-sr-only @md/header-actions:ml-0.5";
 
 function GitActionItemIcon({ icon }: { icon: GitActionIconName }) {
   if (icon === "commit") return <GitCommitIcon />;
@@ -348,13 +348,9 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
           progress.lastOutputLine = null;
           break;
         case "action_finished":
-          progress.phaseStartedAtMs = null;
-          progress.hookStartedAtMs = null;
-          break;
+          return;
         case "action_failed":
-          progress.phaseStartedAtMs = null;
-          progress.hookStartedAtMs = null;
-          break;
+          return;
       }
 
       updateActiveProgressToast();
@@ -751,7 +747,7 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
           {initMutation.isPending ? "Initializing..." : "Initialize Git"}
         </Button>
       ) : (
-        <Group aria-label="Git actions">
+        <div aria-label="Git actions" className="inline-flex items-stretch">
           {quickActionDisabledReason ? (
             <Popover>
               <PopoverTrigger
@@ -759,16 +755,14 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
                 render={
                   <Button
                     aria-disabled="true"
-                    className="cursor-not-allowed rounded-e-none border-e-0 opacity-64 before:rounded-e-none"
+                    className="cursor-not-allowed rounded-e-none border-e-0 opacity-64 before:rounded-e-none focus-visible:ring-offset-0"
                     size="xs"
                     variant="outline"
                   />
                 }
               >
                 <GitQuickActionIcon quickAction={quickAction} />
-                <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
-                  {quickAction.label}
-                </span>
+                <span className={QUICK_ACTION_LABEL_CLASS}>{quickAction.label}</span>
               </PopoverTrigger>
               <PopoverPopup tooltipStyle side="bottom" align="start">
                 {quickActionDisabledReason}
@@ -776,25 +770,30 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
             </Popover>
           ) : (
             <Button
+              className="rounded-e-none border-e-0 before:rounded-e-none focus-visible:ring-offset-0"
               variant="outline"
               size="xs"
               disabled={isGitActionRunning || quickAction.disabled}
               onClick={runQuickAction}
             >
               <GitQuickActionIcon quickAction={quickAction} />
-              <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
-                {quickAction.label}
-              </span>
+              <span className={QUICK_ACTION_LABEL_CLASS}>{quickAction.label}</span>
             </Button>
           )}
-          <GroupSeparator className="hidden @sm/header-actions:block" />
           <Menu
             onOpenChange={(open) => {
               if (open) void invalidateGitQueries(queryClient);
             }}
           >
             <MenuTrigger
-              render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
+              render={
+                <Button
+                  aria-label="Git action options"
+                  className="rounded-s-none before:rounded-s-none focus-visible:ring-offset-0"
+                  size="icon-xs"
+                  variant="outline"
+                />
+              }
               disabled={isGitActionRunning}
             >
               <ChevronDownIcon aria-hidden="true" className="size-4" />
@@ -864,7 +863,7 @@ export default function GitActionsControl({ gitCwd, activeThreadId }: GitActions
               )}
             </MenuPopup>
           </Menu>
-        </Group>
+        </div>
       )}
 
       <Dialog

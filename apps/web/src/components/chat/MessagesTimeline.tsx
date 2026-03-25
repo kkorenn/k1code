@@ -59,6 +59,7 @@ import {
 } from "./userMessageTerminalContexts";
 
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
+const ROW_HEIGHT_TRANSITION_MEASURE_DELAY_MS = 240;
 
 interface MessagesTimelineProps {
   hasMessages: boolean;
@@ -260,10 +261,33 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     useAnimationFrameWithResizeObserver: true,
     overscan: 8,
   });
+  const pendingMeasureFrameRef = useRef<number | null>(null);
+  const pendingMeasureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleVirtualizerMeasure = useCallback(
+    (afterHeightTransition = false) => {
+      if (pendingMeasureFrameRef.current === null) {
+        pendingMeasureFrameRef.current = requestAnimationFrame(() => {
+          pendingMeasureFrameRef.current = null;
+          rowVirtualizer.measure();
+        });
+      }
+      if (!afterHeightTransition) {
+        return;
+      }
+      if (pendingMeasureTimeoutRef.current !== null) {
+        clearTimeout(pendingMeasureTimeoutRef.current);
+      }
+      pendingMeasureTimeoutRef.current = setTimeout(() => {
+        pendingMeasureTimeoutRef.current = null;
+        rowVirtualizer.measure();
+      }, ROW_HEIGHT_TRANSITION_MEASURE_DELAY_MS);
+    },
+    [rowVirtualizer],
+  );
   useEffect(() => {
     if (timelineWidthPx === null) return;
-    rowVirtualizer.measure();
-  }, [rowVirtualizer, timelineWidthPx]);
+    scheduleVirtualizerMeasure();
+  }, [scheduleVirtualizerMeasure, timelineWidthPx]);
   useEffect(() => {
     rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = (_item, _delta, instance) => {
       const viewportHeight = instance.scrollRect?.height ?? 0;
@@ -275,19 +299,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined;
     };
   }, [rowVirtualizer]);
-  const pendingMeasureFrameRef = useRef<number | null>(null);
   const onTimelineImageLoad = useCallback(() => {
-    if (pendingMeasureFrameRef.current !== null) return;
-    pendingMeasureFrameRef.current = window.requestAnimationFrame(() => {
-      pendingMeasureFrameRef.current = null;
-      rowVirtualizer.measure();
-    });
-  }, [rowVirtualizer]);
+    scheduleVirtualizerMeasure();
+  }, [scheduleVirtualizerMeasure]);
   useEffect(() => {
     return () => {
       const frame = pendingMeasureFrameRef.current;
       if (frame !== null) {
-        window.cancelAnimationFrame(frame);
+        cancelAnimationFrame(frame);
+      }
+      const timeout = pendingMeasureTimeoutRef.current;
+      if (timeout !== null) {
+        clearTimeout(timeout);
       }
     };
   }, []);
@@ -303,6 +326,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       [turnId]: !(current[turnId] ?? true),
     }));
   }, []);
+  useEffect(() => {
+    if (virtualizedRowCount === 0) return;
+    scheduleVirtualizerMeasure(true);
+  }, [
+    allDirectoriesExpandedByTurnId,
+    expandedWorkGroups,
+    rows,
+    scheduleVirtualizerMeasure,
+    turnDiffSummaryByAssistantMessageId,
+    virtualizedRowCount,
+  ]);
+  const onChangedFilesTreeHeightChange = useCallback(() => {
+    scheduleVirtualizerMeasure(true);
+  }, [scheduleVirtualizerMeasure]);
 
   const renderRowContent = (row: TimelineRow) => (
     <div
@@ -322,7 +359,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return (
             <Collapsible
               className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5"
-              onOpenChange={() => onToggleWorkGroup(groupId)}
+              onOpenChange={() => {
+                onToggleWorkGroup(groupId);
+                scheduleVirtualizerMeasure(true);
+              }}
               open={isExpanded}
             >
               <CollapsibleTrigger className="group mb-0.5 flex w-full items-center justify-between gap-2 rounded-md px-0.5 py-1 text-left outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
@@ -484,7 +524,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             type="button"
                             size="xs"
                             variant="outline"
-                            onClick={() => onToggleAllDirectories(turnSummary.turnId)}
+                            onClick={() => {
+                              onToggleAllDirectories(turnSummary.turnId);
+                              scheduleVirtualizerMeasure(true);
+                            }}
                           >
                             {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
                           </Button>
@@ -507,6 +550,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         allDirectoriesExpanded={allDirectoriesExpanded}
                         resolvedTheme={resolvedTheme}
                         onOpenTurnDiff={onOpenTurnDiff}
+                        onTreeHeightChange={onChangedFilesTreeHeightChange}
                       />
                     </div>
                   );

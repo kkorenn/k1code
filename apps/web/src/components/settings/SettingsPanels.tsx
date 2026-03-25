@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import {
+  type ModelSlug,
   type ProviderKind,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   ThreadId,
@@ -16,8 +17,9 @@ import {
 import { getModelOptions, normalizeModelSlug } from "@k1tools/shared/model";
 
 import {
-  getAppModelOptions,
+  getCustomModelOptionsByProvider,
   getCustomModelsForProvider,
+  getProviderAvailabilityByProvider,
   MAX_CUSTOM_MODEL_LENGTH,
   MODEL_PROVIDER_SETTINGS,
   patchCustomModels,
@@ -40,6 +42,7 @@ import { cn } from "../../lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { toastManager } from "../ui/toast";
+import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 
 const THEME_OPTIONS = [
   { value: "system", label: "System" },
@@ -53,14 +56,20 @@ const TIMESTAMP_FORMAT_LABELS = {
   "24-hour": "24-hour",
 } as const;
 
-type InstallBinarySettingsKey = "claudeBinaryPath" | "codexBinaryPath";
+type InstallBinarySettingsKey =
+  | "claudeBinaryPath"
+  | "codexBinaryPath"
+  | "geminiBinaryPath"
+  | "cursorBinaryPath"
+  | "copilotBinaryPath"
+  | "openCodeBinaryPath";
 type InstallProviderSettings = {
   provider: ProviderKind;
   title: string;
   binaryPathKey: InstallBinarySettingsKey;
   binaryPlaceholder: string;
   binaryDescription: ReactNode;
-  homePathKey?: "codexHomePath";
+  homePathKey?: "codexHomePath" | "copilotConfigDir";
   homePlaceholder?: string;
   homeDescription?: ReactNode;
 };
@@ -91,6 +100,53 @@ const INSTALL_PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
       </>
     ),
   },
+  {
+    provider: "gemini",
+    title: "Gemini",
+    binaryPathKey: "geminiBinaryPath",
+    binaryPlaceholder: "Gemini binary path",
+    binaryDescription: (
+      <>
+        Leave blank to use <code>gemini</code> from your PATH.
+      </>
+    ),
+  },
+  {
+    provider: "cursor",
+    title: "Cursor",
+    binaryPathKey: "cursorBinaryPath",
+    binaryPlaceholder: "Cursor binary path",
+    binaryDescription: (
+      <>
+        Leave blank to use <code>cursor-agent</code> from your PATH.
+      </>
+    ),
+  },
+  {
+    provider: "copilot",
+    title: "Copilot",
+    binaryPathKey: "copilotBinaryPath",
+    binaryPlaceholder: "Copilot binary path",
+    binaryDescription: (
+      <>
+        Leave blank to use <code>copilot</code> from your PATH.
+      </>
+    ),
+    homePathKey: "copilotConfigDir",
+    homePlaceholder: "~/.config/github-copilot",
+    homeDescription: "Optional Copilot config directory.",
+  },
+  {
+    provider: "openCode",
+    title: "OpenCode",
+    binaryPathKey: "openCodeBinaryPath",
+    binaryPlaceholder: "OpenCode binary path",
+    binaryDescription: (
+      <>
+        Leave blank to use <code>opencode</code> from your PATH.
+      </>
+    ),
+  },
 ] as const;
 
 const DEFAULT_CUSTOM_MODEL_PROVIDER = "codex" as const;
@@ -99,8 +155,16 @@ const EMPTY_CUSTOM_MODEL_INPUT_BY_PROVIDER = {
   claudeAgent: "",
   gemini: "",
   cursor: "",
+  copilot: "",
   openCode: "",
 } satisfies Record<ProviderKind, string>;
+
+function resolveGitTextGenerationModel(
+  provider: ProviderKind,
+  configuredModel: string | null | undefined,
+): string {
+  return configuredModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER[provider];
+}
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -114,7 +178,7 @@ function formatRelativeTime(iso: string): string {
 
 function SettingsSection({ children }: { children: ReactNode }) {
   return (
-    <section>
+    <section className="settings-section-enter">
       <div className="relative overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-xs/5 not-dark:bg-clip-padding before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]">
         {children}
       </div>
@@ -138,7 +202,7 @@ function SettingsRow({
   children?: ReactNode;
 }) {
   return (
-    <div className="border-t border-border px-4 py-4 first:border-t-0 sm:px-5">
+    <div className="settings-row-enter border-t border-border px-4 py-4 first:border-t-0 sm:px-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex min-h-5 items-center gap-1.5">
@@ -188,7 +252,9 @@ function SettingResetButton({ label, onClick }: { label: string; onClick: () => 
 function SettingsPageContainer({ children }: { children: ReactNode }) {
   return (
     <div className="flex-1 overflow-y-auto p-6">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">{children}</div>
+      <div className="settings-pane-enter mx-auto flex w-full max-w-4xl flex-col gap-6">
+        {children}
+      </div>
     </div>
   );
 }
@@ -200,10 +266,21 @@ export function useSettingsRestore(onRestored?: () => void) {
   const isInstallSettingsDirty =
     settings.claudeBinaryPath !== defaults.claudeBinaryPath ||
     settings.codexBinaryPath !== defaults.codexBinaryPath ||
+    settings.geminiBinaryPath !== defaults.geminiBinaryPath ||
+    settings.cursorBinaryPath !== defaults.cursorBinaryPath ||
+    settings.openCodeBinaryPath !== defaults.openCodeBinaryPath ||
     settings.codexHomePath !== defaults.codexHomePath;
+  const currentGitTextGenerationModel = resolveGitTextGenerationModel(
+    settings.textGenerationProvider,
+    settings.textGenerationModel,
+  );
+  const defaultGitTextGenerationModel = resolveGitTextGenerationModel(
+    defaults.textGenerationProvider,
+    defaults.textGenerationModel,
+  );
   const isGitTextGenerationModelDirty =
-    (settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex) !==
-    (defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex);
+    settings.textGenerationProvider !== defaults.textGenerationProvider ||
+    currentGitTextGenerationModel !== defaultGitTextGenerationModel;
   const changedSettingLabels = useMemo(
     () => [
       ...(theme !== "system" ? ["Theme"] : []),
@@ -222,6 +299,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.customClaudeModels.length > 0 ||
       settings.customGeminiModels.length > 0 ||
       settings.customCursorModels.length > 0 ||
+      settings.customCopilotModels.length > 0 ||
       settings.customOpenCodeModels.length > 0
         ? ["Custom models"]
         : []),
@@ -238,10 +316,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.customClaudeModels.length,
       settings.customCodexModels.length,
       settings.customCursorModels.length,
-      settings.defaultThreadEnvMode,
-      settings.enableAssistantStreaming,
+      settings.customCopilotModels.length,
       settings.customGeminiModels.length,
       settings.customOpenCodeModels.length,
+      settings.defaultThreadEnvMode,
+      settings.enableAssistantStreaming,
       settings.timestampFormat,
       theme,
     ],
@@ -277,7 +356,7 @@ export function GeneralSettingsPanel() {
       <SettingsSection>
         <SettingsRow
           title="Theme"
-          description="Choose how T3 Code looks across the app."
+          description="Choose how K1 Code looks across the app."
           resetAction={
             theme !== "system" ? (
               <SettingResetButton label="theme" onClick={() => setTheme("system")} />
@@ -439,6 +518,7 @@ export function GeneralSettingsPanel() {
 
 export function ModelsSettingsPanel() {
   const { settings, defaults, updateSettings } = useAppSettings();
+  const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const [selectedCustomModelProvider, setSelectedCustomModelProvider] = useState<ProviderKind>(
     DEFAULT_CUSTOM_MODEL_PROVIDER,
   );
@@ -449,32 +529,34 @@ export function ModelsSettingsPanel() {
     Partial<Record<ProviderKind, string | null>>
   >({});
   const [showAllCustomModels, setShowAllCustomModels] = useState(false);
-
-  const gitTextGenerationModelOptions = getAppModelOptions(
-    "codex",
-    settings.customCodexModels,
+  const gitTextGenerationProvider = settings.textGenerationProvider;
+  const providerStatuses = serverConfigQuery.data?.providers ?? [];
+  const providerAvailabilityByProvider = getProviderAvailabilityByProvider(
+    settings,
+    providerStatuses,
+  );
+  const gitModelOptionsByProvider = getCustomModelOptionsByProvider(settings);
+  const currentGitTextGenerationModel = resolveGitTextGenerationModel(
+    settings.textGenerationProvider,
     settings.textGenerationModel,
   );
-  const currentGitTextGenerationModel =
-    settings.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex;
-  const defaultGitTextGenerationModel =
-    defaults.textGenerationModel ?? DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER.codex;
+  const defaultGitTextGenerationModel = resolveGitTextGenerationModel(
+    defaults.textGenerationProvider,
+    defaults.textGenerationModel,
+  );
   const isGitTextGenerationModelDirty =
+    settings.textGenerationProvider !== defaults.textGenerationProvider ||
     currentGitTextGenerationModel !== defaultGitTextGenerationModel;
-  const selectedGitTextGenerationModelLabel =
-    gitTextGenerationModelOptions.find((option) => option.slug === currentGitTextGenerationModel)
-      ?.name ?? currentGitTextGenerationModel;
   const selectedCustomModelProviderSettings = MODEL_PROVIDER_SETTINGS.find(
     (providerSettings) => providerSettings.provider === selectedCustomModelProvider,
   )!;
   const selectedCustomModelInput = customModelInputByProvider[selectedCustomModelProvider];
   const selectedCustomModelError = customModelErrorByProvider[selectedCustomModelProvider] ?? null;
-  const totalCustomModels =
-    settings.customCodexModels.length +
-    settings.customClaudeModels.length +
-    settings.customGeminiModels.length +
-    settings.customCursorModels.length +
-    settings.customOpenCodeModels.length;
+  const totalCustomModels = MODEL_PROVIDER_SETTINGS.reduce(
+    (count, providerSettings) =>
+      count + getCustomModelsForProvider(settings, providerSettings.provider).length,
+    0,
+  );
   const savedCustomModelRows = MODEL_PROVIDER_SETTINGS.flatMap((providerSettings) =>
     getCustomModelsForProvider(settings, providerSettings.provider).map((slug) => ({
       key: `${providerSettings.provider}:${slug}`,
@@ -550,31 +632,28 @@ export function ModelsSettingsPanel() {
               <SettingResetButton
                 label="git writing model"
                 onClick={() =>
-                  updateSettings({ textGenerationModel: defaults.textGenerationModel })
+                  updateSettings({
+                    textGenerationProvider: defaults.textGenerationProvider,
+                    textGenerationModel: defaults.textGenerationModel,
+                  })
                 }
               />
             ) : null
           }
           control={
-            <Select
-              value={currentGitTextGenerationModel}
-              onValueChange={(value) => {
-                if (value) {
-                  updateSettings({ textGenerationModel: value });
-                }
+            <ProviderModelPicker
+              provider={gitTextGenerationProvider}
+              model={currentGitTextGenerationModel as ModelSlug}
+              lockedProvider={null}
+              modelOptionsByProvider={gitModelOptionsByProvider}
+              providerAvailabilityByProvider={providerAvailabilityByProvider}
+              onProviderModelChange={(provider, model) => {
+                updateSettings({
+                  textGenerationProvider: provider,
+                  textGenerationModel: model,
+                });
               }}
-            >
-              <SelectTrigger className="w-full sm:w-52" aria-label="Git text generation model">
-                <SelectValue>{selectedGitTextGenerationModelLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                {gitTextGenerationModelOptions.map((option) => (
-                  <SelectItem hideIndicator key={option.slug} value={option.slug}>
-                    {option.name}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
+            />
           }
         />
 
@@ -591,6 +670,7 @@ export function ModelsSettingsPanel() {
                     customClaudeModels: defaults.customClaudeModels,
                     customGeminiModels: defaults.customGeminiModels,
                     customCursorModels: defaults.customCursorModels,
+                    customCopilotModels: defaults.customCopilotModels,
                     customOpenCodeModels: defaults.customOpenCodeModels,
                   });
                   setCustomModelErrorByProvider({});
@@ -720,11 +800,20 @@ export function AdvancedSettingsPanel() {
   >({
     codex: Boolean(settings.codexBinaryPath || settings.codexHomePath),
     claudeAgent: Boolean(settings.claudeBinaryPath),
+    gemini: Boolean(settings.geminiBinaryPath),
+    cursor: Boolean(settings.cursorBinaryPath),
+    copilot: Boolean(settings.copilotBinaryPath || settings.copilotConfigDir),
+    openCode: Boolean(settings.openCodeBinaryPath),
   });
 
   const isInstallSettingsDirty =
     settings.claudeBinaryPath !== defaults.claudeBinaryPath ||
     settings.codexBinaryPath !== defaults.codexBinaryPath ||
+    settings.geminiBinaryPath !== defaults.geminiBinaryPath ||
+    settings.cursorBinaryPath !== defaults.cursorBinaryPath ||
+    settings.copilotBinaryPath !== defaults.copilotBinaryPath ||
+    settings.copilotConfigDir !== defaults.copilotConfigDir ||
+    settings.openCodeBinaryPath !== defaults.openCodeBinaryPath ||
     settings.codexHomePath !== defaults.codexHomePath;
 
   const openKeybindingsFile = useCallback(() => {
@@ -764,11 +853,20 @@ export function AdvancedSettingsPanel() {
                   updateSettings({
                     claudeBinaryPath: defaults.claudeBinaryPath,
                     codexBinaryPath: defaults.codexBinaryPath,
+                    geminiBinaryPath: defaults.geminiBinaryPath,
+                    cursorBinaryPath: defaults.cursorBinaryPath,
+                    copilotBinaryPath: defaults.copilotBinaryPath,
+                    copilotConfigDir: defaults.copilotConfigDir,
+                    openCodeBinaryPath: defaults.openCodeBinaryPath,
                     codexHomePath: defaults.codexHomePath,
                   });
                   setOpenInstallProviders({
                     codex: false,
                     claudeAgent: false,
+                    gemini: false,
+                    cursor: false,
+                    copilot: false,
+                    openCode: false,
                   });
                 }}
               />
@@ -783,11 +881,28 @@ export function AdvancedSettingsPanel() {
                   providerSettings.provider === "codex"
                     ? settings.codexBinaryPath !== defaults.codexBinaryPath ||
                       settings.codexHomePath !== defaults.codexHomePath
-                    : settings.claudeBinaryPath !== defaults.claudeBinaryPath;
+                    : providerSettings.provider === "claudeAgent"
+                      ? settings.claudeBinaryPath !== defaults.claudeBinaryPath
+                      : providerSettings.provider === "gemini"
+                        ? settings.geminiBinaryPath !== defaults.geminiBinaryPath
+                        : providerSettings.provider === "cursor"
+                          ? settings.cursorBinaryPath !== defaults.cursorBinaryPath
+                          : providerSettings.provider === "copilot"
+                            ? settings.copilotBinaryPath !== defaults.copilotBinaryPath ||
+                              settings.copilotConfigDir !== defaults.copilotConfigDir
+                            : settings.openCodeBinaryPath !== defaults.openCodeBinaryPath;
                 const binaryPathValue =
                   providerSettings.binaryPathKey === "claudeBinaryPath"
                     ? settings.claudeBinaryPath
-                    : settings.codexBinaryPath;
+                    : providerSettings.binaryPathKey === "codexBinaryPath"
+                      ? settings.codexBinaryPath
+                      : providerSettings.binaryPathKey === "geminiBinaryPath"
+                        ? settings.geminiBinaryPath
+                        : providerSettings.binaryPathKey === "cursorBinaryPath"
+                          ? settings.cursorBinaryPath
+                          : providerSettings.binaryPathKey === "copilotBinaryPath"
+                            ? settings.copilotBinaryPath
+                            : settings.openCodeBinaryPath;
 
                 return (
                   <Collapsible
@@ -839,13 +954,31 @@ export function AdvancedSettingsPanel() {
                                 id={`provider-install-${providerSettings.binaryPathKey}`}
                                 className="mt-1"
                                 value={binaryPathValue}
-                                onChange={(event) =>
-                                  updateSettings(
-                                    providerSettings.binaryPathKey === "claudeBinaryPath"
-                                      ? { claudeBinaryPath: event.target.value }
-                                      : { codexBinaryPath: event.target.value },
-                                  )
-                                }
+                                onChange={(event) => {
+                                  const value = event.target.value;
+                                  switch (providerSettings.binaryPathKey) {
+                                    case "claudeBinaryPath":
+                                      updateSettings({ claudeBinaryPath: value });
+                                      break;
+                                    case "codexBinaryPath":
+                                      updateSettings({ codexBinaryPath: value });
+                                      break;
+                                    case "geminiBinaryPath":
+                                      updateSettings({ geminiBinaryPath: value });
+                                      break;
+                                    case "cursorBinaryPath":
+                                      updateSettings({ cursorBinaryPath: value });
+                                      break;
+                                    case "copilotBinaryPath":
+                                      updateSettings({ copilotBinaryPath: value });
+                                      break;
+                                    case "openCodeBinaryPath":
+                                      updateSettings({ openCodeBinaryPath: value });
+                                      break;
+                                    default:
+                                      break;
+                                  }
+                                }}
                                 placeholder={providerSettings.binaryPlaceholder}
                                 spellCheck={false}
                               />
@@ -860,15 +993,25 @@ export function AdvancedSettingsPanel() {
                                 className="block"
                               >
                                 <span className="block text-xs font-medium text-foreground">
-                                  CODEX_HOME path
+                                  {providerSettings.homePathKey === "copilotConfigDir"
+                                    ? "Copilot config directory"
+                                    : "CODEX_HOME path"}
                                 </span>
                                 <Input
                                   id={`provider-install-${providerSettings.homePathKey}`}
                                   className="mt-1"
-                                  value={settings.codexHomePath}
-                                  onChange={(event) =>
-                                    updateSettings({ codexHomePath: event.target.value })
+                                  value={
+                                    providerSettings.homePathKey === "copilotConfigDir"
+                                      ? settings.copilotConfigDir
+                                      : settings.codexHomePath
                                   }
+                                  onChange={(event) => {
+                                    if (providerSettings.homePathKey === "copilotConfigDir") {
+                                      updateSettings({ copilotConfigDir: event.target.value });
+                                      return;
+                                    }
+                                    updateSettings({ codexHomePath: event.target.value });
+                                  }}
                                   placeholder={providerSettings.homePlaceholder}
                                   spellCheck={false}
                                 />

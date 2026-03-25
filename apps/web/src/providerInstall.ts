@@ -23,6 +23,7 @@ const PROVIDER_LABEL_BY_KIND: Record<ProviderKind, string> = {
   claudeAgent: "Claude",
   gemini: "Gemini",
   cursor: "Cursor",
+  copilot: "Copilot",
   openCode: "OpenCode",
 };
 
@@ -31,6 +32,7 @@ const PROVIDER_INSTALL_URL_BY_KIND: Record<ProviderKind, string> = {
   claudeAgent: "https://docs.anthropic.com/en/docs/claude-code/setup",
   gemini: "https://github.com/google-gemini/gemini-cli",
   cursor: "https://docs.cursor.com/en/cli/installation",
+  copilot: "https://github.com/github/copilot-cli",
   openCode: "https://opencode.ai/docs/cli/",
 };
 
@@ -39,6 +41,7 @@ const PROVIDER_BINARY_BY_KIND: Record<ProviderKind, string> = {
   claudeAgent: "claude",
   gemini: "gemini",
   cursor: "cursor-agent",
+  copilot: "copilot",
   openCode: "opencode",
 };
 
@@ -47,6 +50,7 @@ const PROVIDER_LOGIN_COMMAND_BY_KIND: Record<ProviderKind, string> = {
   claudeAgent: "claude auth login",
   gemini: "gemini",
   cursor: "cursor-agent login",
+  copilot: "copilot auth login",
   openCode: "opencode auth login",
 };
 
@@ -74,6 +78,11 @@ const PROVIDER_INSTALL_COMMAND_BY_KIND: Record<
     linux: "npm install -g @google/gemini-cli",
   },
   cursor: {},
+  copilot: {
+    macos: "npm install -g @github/copilot",
+    windows: "npm install -g @github/copilot",
+    linux: "npm install -g @github/copilot",
+  },
   openCode: {
     macos: "brew install sst/tap/opencode",
     windows: "npm install -g opencode-ai",

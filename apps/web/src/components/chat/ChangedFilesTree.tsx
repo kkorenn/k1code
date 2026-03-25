@@ -13,8 +13,16 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   allDirectoriesExpanded: boolean;
   resolvedTheme: "light" | "dark";
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onTreeHeightChange?: () => void;
 }) {
-  const { files, allDirectoriesExpanded, onOpenTurnDiff, resolvedTheme, turnId } = props;
+  const {
+    files,
+    allDirectoriesExpanded,
+    onOpenTurnDiff,
+    onTreeHeightChange,
+    resolvedTheme,
+    turnId,
+  } = props;
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files]);
   const directoryPathsKey = useMemo(
     () => collectDirectoryPaths(treeNodes).join("\u0000"),
@@ -34,6 +42,9 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   useEffect(() => {
     setExpandedDirectories(allDirectoryExpansionState);
   }, [allDirectoryExpansionState]);
+  useEffect(() => {
+    onTreeHeightChange?.();
+  }, [expandedDirectories, onTreeHeightChange]);
 
   const toggleDirectory = useCallback((pathValue: string, fallbackExpanded: boolean) => {
     setExpandedDirectories((current) => ({

@@ -6,6 +6,7 @@ import { Effect, Layer, Stream } from "effect";
 
 import { ClaudeAdapter, ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { CodexAdapter, CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import { CopilotAdapter, CopilotAdapterShape } from "../Services/CopilotAdapter.ts";
 import { CursorAdapter, CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { GeminiAdapter, GeminiAdapterShape } from "../Services/GeminiAdapter.ts";
 import { OpenCodeAdapter, OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
@@ -82,6 +83,23 @@ const fakeCursorAdapter: CursorAdapterShape = {
   streamEvents: Stream.empty,
 };
 
+const fakeCopilotAdapter: CopilotAdapterShape = {
+  provider: "copilot",
+  capabilities: { sessionModelSwitch: "in-session" },
+  startSession: vi.fn(),
+  sendTurn: vi.fn(),
+  interruptTurn: vi.fn(),
+  respondToRequest: vi.fn(),
+  respondToUserInput: vi.fn(),
+  stopSession: vi.fn(),
+  listSessions: vi.fn(),
+  hasSession: vi.fn(),
+  readThread: vi.fn(),
+  rollbackThread: vi.fn(),
+  stopAll: vi.fn(),
+  streamEvents: Stream.empty,
+};
+
 const fakeOpenCodeAdapter: OpenCodeAdapterShape = {
   provider: "openCode",
   capabilities: { sessionModelSwitch: "in-session" },
@@ -108,6 +126,7 @@ const layer = it.layer(
         Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
         Layer.succeed(GeminiAdapter, fakeGeminiAdapter),
         Layer.succeed(CursorAdapter, fakeCursorAdapter),
+        Layer.succeed(CopilotAdapter, fakeCopilotAdapter),
         Layer.succeed(OpenCodeAdapter, fakeOpenCodeAdapter),
       ),
     ),
@@ -123,15 +142,24 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const claude = yield* registry.getByProvider("claudeAgent");
       const gemini = yield* registry.getByProvider("gemini");
       const cursor = yield* registry.getByProvider("cursor");
+      const copilot = yield* registry.getByProvider("copilot");
       const openCode = yield* registry.getByProvider("openCode");
       assert.equal(codex, fakeCodexAdapter);
       assert.equal(claude, fakeClaudeAdapter);
       assert.equal(gemini, fakeGeminiAdapter);
       assert.equal(cursor, fakeCursorAdapter);
+      assert.equal(copilot, fakeCopilotAdapter);
       assert.equal(openCode, fakeOpenCodeAdapter);
 
       const providers = yield* registry.listProviders();
-      assert.deepEqual(providers, ["codex", "claudeAgent", "gemini", "cursor", "openCode"]);
+      assert.deepEqual(providers, [
+        "codex",
+        "claudeAgent",
+        "gemini",
+        "cursor",
+        "copilot",
+        "openCode",
+      ]);
     }),
   );
 

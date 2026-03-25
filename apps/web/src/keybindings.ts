@@ -28,6 +28,8 @@ interface ShortcutMatchOptions {
 
 const TERMINAL_WORD_BACKWARD = "\u001bb";
 const TERMINAL_WORD_FORWARD = "\u001bf";
+const TERMINAL_WORD_BACKWARD_CTRL = "\u001b[1;5D";
+const TERMINAL_WORD_FORWARD_CTRL = "\u001b[1;5C";
 const TERMINAL_LINE_START = "\u0001";
 const TERMINAL_LINE_END = "\u0005";
 
@@ -271,6 +273,8 @@ export function terminalNavigationShortcutData(
 
   const moveWord = key === "arrowleft" ? TERMINAL_WORD_BACKWARD : TERMINAL_WORD_FORWARD;
   const moveLine = key === "arrowleft" ? TERMINAL_LINE_START : TERMINAL_LINE_END;
+  const moveWordCtrl =
+    key === "arrowleft" ? TERMINAL_WORD_BACKWARD_CTRL : TERMINAL_WORD_FORWARD_CTRL;
 
   if (isMacPlatform(platform)) {
     if (event.altKey && !event.metaKey && !event.ctrlKey) {
@@ -283,11 +287,7 @@ export function terminalNavigationShortcutData(
   }
 
   if (event.ctrlKey && !event.metaKey && !event.altKey) {
-    return moveWord;
-  }
-
-  if (event.altKey && !event.metaKey && !event.ctrlKey) {
-    return moveWord;
+    return moveWordCtrl;
   }
 
   return null;

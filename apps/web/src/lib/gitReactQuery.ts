@@ -113,7 +113,7 @@ export function gitRunStackedActionMutationOptions(input: {
   cwd: string | null;
   queryClient: QueryClient;
   model?: string | null;
-  textGenerationProvider?: "codex" | "claudeAgent" | "gemini" | "cursor" | "openCode";
+  textGenerationProvider?: "codex" | "claudeAgent" | "gemini" | "cursor" | "copilot" | "openCode";
 }) {
   return mutationOptions({
     mutationKey: gitMutationKeys.runStackedAction(input.cwd),

@@ -1270,6 +1270,21 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       return;
     }
 
+    if (request.method === "item/tool/call") {
+      const toolName = this.readString(request.params, "tool");
+      const message = toolName
+        ? `Dynamic tool '${toolName}' is not supported by this client.`
+        : "Dynamic tool call is not supported by this client.";
+      this.writeMessage(context, {
+        id: request.id,
+        result: {
+          contentItems: [{ type: "inputText", text: message }],
+          success: false,
+        },
+      });
+      return;
+    }
+
     this.writeMessage(context, {
       id: request.id,
       error: {
@@ -1469,7 +1484,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       this.readString(params, "turnId") ?? this.readString(this.readObject(params, "turn"), "id"),
     );
     const itemId = toProviderItemId(
-      this.readString(params, "itemId") ?? this.readString(this.readObject(params, "item"), "id"),
+      this.readString(params, "itemId") ??
+        this.readString(this.readObject(params, "item"), "id") ??
+        this.readString(params, "callId"),
     );
 
     if (turnId) {

@@ -23,6 +23,10 @@ const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-5", name: "GPT 5" },
     { slug: "claude-4.5-sonnet", name: "Claude 4.5 Sonnet" },
   ],
+  copilot: [
+    { slug: "gpt-5.4", name: "GPT-5.4" },
+    { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+  ],
   openCode: [
     { slug: "openai/gpt-5.4", name: "OpenAI GPT 5.4" },
     { slug: "opencode/big-pickle", name: "OpenCode Big Pickle" },
@@ -83,6 +87,7 @@ describe("ProviderModelPicker", () => {
         expect(text).toContain("Claude");
         expect(text).toContain("Gemini");
         expect(text).toContain("Cursor");
+        expect(text).toContain("Copilot");
         expect(text).toContain("OpenCode");
         expect(text).not.toContain("Claude Sonnet 4.6");
       });
@@ -142,6 +147,7 @@ describe("ProviderModelPicker", () => {
         claudeAgent: true,
         gemini: false,
         cursor: true,
+        copilot: true,
         openCode: true,
       },
     });
@@ -169,6 +175,7 @@ describe("ProviderModelPicker", () => {
         claudeAgent: true,
         gemini: false,
         cursor: true,
+        copilot: true,
         openCode: true,
       },
     });

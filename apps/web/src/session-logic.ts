@@ -31,6 +31,7 @@ export const PROVIDER_OPTIONS: Array<{
   { value: "claudeAgent", label: "Claude", available: true },
   { value: "gemini", label: "Gemini", available: true },
   { value: "cursor", label: "Cursor", available: true },
+  { value: "copilot", label: "Copilot", available: true },
   { value: "openCode", label: "OpenCode", available: true },
 ];
 
@@ -638,10 +639,84 @@ function asTrimmedString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+const SHELL_BINARY_NAMES = new Set(["sh", "bash", "zsh", "sh.exe", "bash.exe", "zsh.exe"]);
+
+function isShellBinary(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+  const basename = normalized.split(/[\\/]/).at(-1) ?? normalized;
+  return SHELL_BINARY_NAMES.has(basename);
+}
+
+function stripMatchingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) {
+    return trimmed;
+  }
+  const first = trimmed.at(0);
+  const last = trimmed.at(-1);
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    const unquoted = trimmed.slice(1, -1).trim();
+    return unquoted.length > 0 ? unquoted : trimmed;
+  }
+  return trimmed;
+}
+
+function unwrapShellWrappedCommandParts(parts: ReadonlyArray<string>): string | null {
+  if (parts.length < 3) {
+    return null;
+  }
+  const [shell] = parts;
+  if (!shell || !isShellBinary(shell)) {
+    return null;
+  }
+
+  for (let index = 1; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (!part) {
+      continue;
+    }
+    if (!part.startsWith("-")) {
+      return null;
+    }
+    if (part === "-c" || (/^-[A-Za-z]+$/.test(part) && part.includes("c"))) {
+      const command = stripMatchingQuotes(parts.slice(index + 1).join(" "));
+      return command.length > 0 ? command : null;
+    }
+  }
+
+  return null;
+}
+
+function unwrapShellWrappedCommandString(value: string): string | null {
+  const trimmed = value.trim();
+  const withCombinedOption =
+    /^(?<shell>\S+)\s+(?<option>-[A-Za-z]*c[A-Za-z]*)\s+(?<command>[\s\S]+)$/u.exec(trimmed);
+  if (withCombinedOption?.groups?.shell && withCombinedOption.groups.command) {
+    if (isShellBinary(withCombinedOption.groups.shell)) {
+      const command = stripMatchingQuotes(withCombinedOption.groups.command);
+      return command.length > 0 ? command : null;
+    }
+  }
+
+  const withSeparateOption =
+    /^(?<shell>\S+)\s+(?<options>(?:-[^\s]+\s+)*)-c\s+(?<command>[\s\S]+)$/u.exec(trimmed);
+  if (withSeparateOption?.groups?.shell && withSeparateOption.groups.command) {
+    if (isShellBinary(withSeparateOption.groups.shell)) {
+      const command = stripMatchingQuotes(withSeparateOption.groups.command);
+      return command.length > 0 ? command : null;
+    }
+  }
+
+  return null;
+}
+
 function normalizeCommandValue(value: unknown): string | null {
   const direct = asTrimmedString(value);
   if (direct) {
-    return direct;
+    return unwrapShellWrappedCommandString(direct) ?? direct;
   }
   if (!Array.isArray(value)) {
     return null;
@@ -649,6 +724,10 @@ function normalizeCommandValue(value: unknown): string | null {
   const parts = value
     .map((entry) => asTrimmedString(entry))
     .filter((entry): entry is string => entry !== null);
+  const unwrapped = unwrapShellWrappedCommandParts(parts);
+  if (unwrapped) {
+    return unwrapped;
+  }
   return parts.length > 0 ? parts.join(" ") : null;
 }
 

@@ -30,7 +30,7 @@ import { GitCore, type GitCoreShape } from "../../git/Services/GitCore.ts";
 import { TextGeneration, type TextGenerationShape } from "../../git/Services/TextGeneration.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
-import { ProviderCommandReactorLive } from "./ProviderCommandReactor.ts";
+import { ProviderCommandReactorLive, resolvePreferredProvider } from "./ProviderCommandReactor.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -509,7 +509,7 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it("rejects a first turn when requested provider conflicts with the thread model", async () => {
+  it("binds a pristine thread to the explicitly requested provider on first turn", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
 
@@ -525,40 +525,35 @@ describe("ProviderCommandReactor", () => {
           attachments: [],
         },
         provider: "claudeAgent",
+        model: "claude-sonnet-4-6",
         interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
         runtimeMode: "approval-required",
         createdAt: now,
       }),
     );
 
-    await waitFor(async () => {
-      const readModel = await Effect.runPromise(harness.engine.getReadModel());
-      const thread = readModel.threads.find(
-        (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
-      );
-      return (
-        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed") ??
-        false
-      );
-    });
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
 
-    expect(harness.startSession).not.toHaveBeenCalled();
-    expect(harness.sendTurn).not.toHaveBeenCalled();
+    expect(harness.startSession).toHaveBeenCalledWith(
+      ThreadId.makeUnsafe("thread-1"),
+      expect.objectContaining({
+        provider: "claudeAgent",
+        model: "claude-sonnet-4-6",
+      }),
+    );
 
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
-    expect(thread?.session).toBeNull();
-    expect(
-      thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
-    ).toMatchObject({
-      summary: "Provider turn start failed",
-      payload: {
-        detail: expect.stringContaining("cannot switch to 'claudeAgent'"),
-      },
-    });
+    expect(thread?.session?.providerName).toBe("claudeAgent");
   });
 
-  it("rejects a turn when the requested model belongs to a different provider", async () => {
+  it("prefers the locked thread provider over the inferred request provider", () => {
+    expect(resolvePreferredProvider(undefined, "claudeAgent")).toBe("claudeAgent");
+    expect(resolvePreferredProvider("codex", "claudeAgent")).toBe("codex");
+  });
+
+  it("infers the provider from the selected model on a pristine thread", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
 
@@ -580,6 +575,60 @@ describe("ProviderCommandReactor", () => {
       }),
     );
 
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+
+    expect(harness.startSession).toHaveBeenCalledWith(
+      ThreadId.makeUnsafe("thread-1"),
+      expect.objectContaining({
+        provider: "claudeAgent",
+        model: "claude-sonnet-4-6",
+      }),
+    );
+  });
+
+  it("rejects a provider-scoped model change after the thread is already bound", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-established-model-provider-1"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-established-model-provider-1"),
+          role: "user",
+          text: "first",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-established-model-provider-2"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-established-model-provider-2"),
+          role: "user",
+          text: "second",
+          attachments: [],
+        },
+        model: "claude-sonnet-4-6",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
     await waitFor(async () => {
       const readModel = await Effect.runPromise(harness.engine.getReadModel());
       const thread = readModel.threads.find(
@@ -591,8 +640,8 @@ describe("ProviderCommandReactor", () => {
       );
     });
 
-    expect(harness.startSession).not.toHaveBeenCalled();
-    expect(harness.sendTurn).not.toHaveBeenCalled();
+    expect(harness.startSession.mock.calls.length).toBe(1);
+    expect(harness.sendTurn.mock.calls.length).toBe(1);
 
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));

@@ -19,6 +19,7 @@ import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus"
 import { ProviderUnsupportedError } from "./provider/Errors";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
+import { makeCopilotAdapterLive } from "./provider/Layers/CopilotAdapter";
 import { makeCursorAdapterLive } from "./provider/Layers/CursorAdapter";
 import { makeGeminiAdapterLive } from "./provider/Layers/GeminiAdapter";
 import { makeOpenCodeAdapterLive } from "./provider/Layers/OpenCodeAdapter";
@@ -82,6 +83,9 @@ export function makeServerProviderLayer(): Layer.Layer<
     const cursorAdapterLayer = makeCursorAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
+    const copilotAdapterLayer = makeCopilotAdapterLive(
+      nativeEventLogger ? { nativeEventLogger } : undefined,
+    );
     const openCodeAdapterLayer = makeOpenCodeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
@@ -90,6 +94,7 @@ export function makeServerProviderLayer(): Layer.Layer<
       Layer.provide(claudeAdapterLayer),
       Layer.provide(geminiAdapterLayer),
       Layer.provide(cursorAdapterLayer),
+      Layer.provide(copilotAdapterLayer),
       Layer.provide(openCodeAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );

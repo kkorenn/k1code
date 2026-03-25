@@ -196,6 +196,7 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
     providerName === "claudeAgent" ||
     providerName === "gemini" ||
     providerName === "cursor" ||
+    providerName === "copilot" ||
     providerName === "openCode"
   ) {
     return providerName;

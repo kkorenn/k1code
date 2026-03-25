@@ -72,7 +72,7 @@ const LOG_DIR = Path.join(STATE_DIR, "logs");
 const LOG_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const LOG_FILE_MAX_FILES = 10;
 const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
-const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000;
+const AUTO_UPDATE_STARTUP_DELAY_MS = 2_000;
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const DESKTOP_UPDATE_CHANNEL = "latest";
 const DESKTOP_UPDATE_ALLOW_PRERELEASE = false;
@@ -278,6 +278,10 @@ let updateCheckInFlight = false;
 let updateDownloadInFlight = false;
 let updaterConfigured = false;
 let updateState: DesktopUpdateState = initialUpdateState();
+let promptedAvailableUpdateVersion: string | null = null;
+let promptedDownloadedUpdateVersion: string | null = null;
+let updateAvailabilityPromptInFlight = false;
+let updateInstallPromptInFlight = false;
 
 function resolveUpdaterErrorContext(): DesktopUpdateErrorContext {
   if (updateDownloadInFlight) return "download";
@@ -731,6 +735,24 @@ function setUpdateState(patch: Partial<DesktopUpdateState>): void {
   emitUpdateState();
 }
 
+function resolveDialogParentWindow(): BrowserWindow | null {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow;
+  }
+  const openWindow = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
+  return openWindow ?? null;
+}
+
+async function showDesktopMessageBox(
+  options: Electron.MessageBoxOptions,
+): Promise<Electron.MessageBoxReturnValue> {
+  const parentWindow = resolveDialogParentWindow();
+  if (parentWindow) {
+    return dialog.showMessageBox(parentWindow, options);
+  }
+  return dialog.showMessageBox(options);
+}
+
 function shouldEnableAutoUpdates(): boolean {
   return (
     getAutoUpdateDisabledReason({
@@ -810,8 +832,68 @@ async function installDownloadedUpdate(): Promise<{ accepted: boolean; completed
   }
 }
 
+async function promptToDownloadAvailableUpdate(version: string): Promise<void> {
+  if (isQuitting || updateAvailabilityPromptInFlight) return;
+  if (promptedAvailableUpdateVersion === version) return;
+
+  promptedAvailableUpdateVersion = version;
+  updateAvailabilityPromptInFlight = true;
+  try {
+    const result = await showDesktopMessageBox({
+      type: "info",
+      title: "Update available",
+      message: `K1 Code ${version} is available.`,
+      detail: "Would you like to download and install this update now?",
+      buttons: ["Update now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+
+    if (result.response !== 0) {
+      return;
+    }
+
+    await downloadAvailableUpdate();
+  } finally {
+    updateAvailabilityPromptInFlight = false;
+  }
+}
+
+async function promptToInstallDownloadedUpdate(version: string): Promise<void> {
+  if (isQuitting || updateInstallPromptInFlight) return;
+  if (promptedDownloadedUpdateVersion === version) return;
+
+  promptedDownloadedUpdateVersion = version;
+  updateInstallPromptInFlight = true;
+  try {
+    const result = await showDesktopMessageBox({
+      type: "info",
+      title: "Update ready",
+      message: `K1 Code ${version} has been downloaded.`,
+      detail: "Restart now to install the update?",
+      buttons: ["Restart & install", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+
+    if (result.response !== 0) {
+      return;
+    }
+
+    await installDownloadedUpdate();
+  } finally {
+    updateInstallPromptInFlight = false;
+  }
+}
+
 function configureAutoUpdater(): void {
   const enabled = shouldEnableAutoUpdates();
+  promptedAvailableUpdateVersion = null;
+  promptedDownloadedUpdateVersion = null;
+  updateAvailabilityPromptInFlight = false;
+  updateInstallPromptInFlight = false;
   setUpdateState({
     ...createInitialDesktopUpdateState(app.getVersion(), desktopRuntimeInfo),
     enabled,
@@ -867,10 +949,12 @@ function configureAutoUpdater(): void {
     );
     lastLoggedDownloadMilestone = -1;
     console.info(`[desktop-updater] Update available: ${info.version}`);
+    void promptToDownloadAvailableUpdate(info.version);
   });
   autoUpdater.on("update-not-available", () => {
     setUpdateState(reduceDesktopUpdateStateOnNoUpdate(updateState, new Date().toISOString()));
     lastLoggedDownloadMilestone = -1;
+    promptedAvailableUpdateVersion = null;
     console.info("[desktop-updater] No updates available.");
   });
   autoUpdater.on("error", (error) => {
@@ -904,6 +988,7 @@ function configureAutoUpdater(): void {
   autoUpdater.on("update-downloaded", (info) => {
     setUpdateState(reduceDesktopUpdateStateOnDownloadComplete(updateState, info.version));
     console.info(`[desktop-updater] Update downloaded: ${info.version}`);
+    void promptToInstallDownloadedUpdate(info.version);
   });
 
   clearUpdatePollTimer();
@@ -1115,6 +1200,13 @@ function registerIpcHandlers(): void {
     }
 
     nativeTheme.themeSource = theme;
+
+    // Keep the native window background in sync so resize does not flash
+    // a stale color while the renderer catches up.
+    const backgroundColor = themeBackgroundColor();
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.setBackgroundColor(backgroundColor);
+    }
   });
 
   ipcMain.removeHandler(CONTEXT_MENU_CHANNEL);
@@ -1233,6 +1325,16 @@ function getIconOption(): { icon: string } | Record<string, never> {
   return iconPath ? { icon: iconPath } : {};
 }
 
+// Background colors that match the app's CSS theme tokens.
+// Dark: color-mix(in srgb, neutral-950 95%, white) ~= #161616
+// Light: white
+const THEME_BG_DARK = "#161616";
+const THEME_BG_LIGHT = "#ffffff";
+
+function themeBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors ? THEME_BG_DARK : THEME_BG_LIGHT;
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1100,
@@ -1241,6 +1343,7 @@ function createWindow(): BrowserWindow {
     minHeight: 620,
     show: false,
     autoHideMenuBar: true,
+    backgroundColor: themeBackgroundColor(),
     ...getIconOption(),
     title: APP_DISPLAY_NAME,
     titleBarStyle: "hiddenInset",

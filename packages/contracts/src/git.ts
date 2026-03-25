@@ -86,7 +86,7 @@ export const GitRunStackedActionInput = Schema.Struct({
     ),
   ),
   textGenerationProvider: Schema.optional(
-    Schema.Literals(["codex", "claudeAgent", "gemini", "cursor", "openCode"]),
+    Schema.Literals(["codex", "claudeAgent", "gemini", "cursor", "copilot", "openCode"]),
   ),
 });
 export type GitRunStackedActionInput = typeof GitRunStackedActionInput.Type;

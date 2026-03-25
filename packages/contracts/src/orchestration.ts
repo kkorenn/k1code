@@ -32,6 +32,7 @@ export const ProviderKind = Schema.Literals([
   "claudeAgent",
   "gemini",
   "cursor",
+  "copilot",
   "openCode",
 ]);
 export type ProviderKind = typeof ProviderKind.Type;
@@ -73,11 +74,17 @@ export const OpenCodeProviderStartOptions = Schema.Struct({
   binaryPath: Schema.optional(TrimmedNonEmptyString),
 });
 
+export const CopilotProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
+  configDir: Schema.optional(TrimmedNonEmptyString),
+});
+
 export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
   gemini: Schema.optional(GeminiProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),
+  copilot: Schema.optional(CopilotProviderStartOptions),
   openCode: Schema.optional(OpenCodeProviderStartOptions),
 });
 export type ProviderStartOptions = typeof ProviderStartOptions.Type;

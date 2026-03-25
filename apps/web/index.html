@@ -12,6 +12,18 @@
       rel="stylesheet"
     />
     <title>K1 Code</title>
+    <script>
+      // Apply theme background before first paint to prevent white flash.
+      // Must run synchronously in <head> before any rendering occurs.
+      (function () {
+        var theme = localStorage.getItem("k1code:theme") || "system";
+        var isDark =
+          theme === "dark" ||
+          (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.style.backgroundColor = isDark ? "#161616" : "#ffffff";
+        if (isDark) document.documentElement.classList.add("dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

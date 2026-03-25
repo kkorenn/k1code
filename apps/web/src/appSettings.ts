@@ -51,12 +51,14 @@ type CustomModelSettingsKey =
   | "customClaudeModels"
   | "customGeminiModels"
   | "customCursorModels"
+  | "customCopilotModels"
   | "customOpenCodeModels";
 type ProviderAvailabilityOverrideSettingsKey =
   | "developerProviderAvailabilityCodex"
   | "developerProviderAvailabilityClaude"
   | "developerProviderAvailabilityGemini"
   | "developerProviderAvailabilityCursor"
+  | "developerProviderAvailabilityCopilot"
   | "developerProviderAvailabilityOpenCode";
 export type ProviderCustomModelConfig = {
   provider: ProviderKind;
@@ -73,6 +75,7 @@ const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>
   claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
   gemini: new Set(getModelOptions("gemini").map((option) => option.slug)),
   cursor: new Set(getModelOptions("cursor").map((option) => option.slug)),
+  copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
   openCode: new Set(getModelOptions("openCode").map((option) => option.slug)),
 };
 
@@ -94,6 +97,8 @@ export const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   geminiBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   cursorBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  copilotBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  copilotConfigDir: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   openCodeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   newProjectBasePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -120,12 +125,14 @@ export const AppSettingsSchema = Schema.Struct({
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customGeminiModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCursorModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customCopilotModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customOpenCodeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationProvider: Schema.Literals([
     "codex",
     "claudeAgent",
     "gemini",
     "cursor",
+    "copilot",
     "openCode",
   ]).pipe(withDefaults(() => "codex" as const)),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
@@ -140,6 +147,9 @@ export const AppSettingsSchema = Schema.Struct({
     withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
   ),
   developerProviderAvailabilityCursor: DeveloperProviderAvailabilityOverride.pipe(
+    withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
+  ),
+  developerProviderAvailabilityCopilot: DeveloperProviderAvailabilityOverride.pipe(
     withDefaults(() => "auto" as const satisfies DeveloperProviderAvailabilityOverride),
   ),
   developerProviderAvailabilityOpenCode: DeveloperProviderAvailabilityOverride.pipe(
@@ -193,6 +203,15 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "your-cursor-model-slug",
     example: "claude-4.5-sonnet",
   },
+  copilot: {
+    provider: "copilot",
+    settingsKey: "customCopilotModels",
+    defaultSettingsKey: "customCopilotModels",
+    title: "Copilot",
+    description: "Save additional Copilot model slugs for the picker and `/model` command.",
+    placeholder: "your-copilot-model-slug",
+    example: "gpt-5.4-mini",
+  },
   openCode: {
     provider: "openCode",
     settingsKey: "customOpenCodeModels",
@@ -209,6 +228,7 @@ const ALL_PROVIDER_KINDS: ReadonlyArray<ProviderKind> = [
   "claudeAgent",
   "gemini",
   "cursor",
+  "copilot",
   "openCode",
 ];
 const PROVIDER_AVAILABILITY_OVERRIDE_SETTING_KEY: Record<
@@ -219,6 +239,7 @@ const PROVIDER_AVAILABILITY_OVERRIDE_SETTING_KEY: Record<
   claudeAgent: "developerProviderAvailabilityClaude",
   gemini: "developerProviderAvailabilityGemini",
   cursor: "developerProviderAvailabilityCursor",
+  copilot: "developerProviderAvailabilityCopilot",
   openCode: "developerProviderAvailabilityOpenCode",
 };
 
@@ -258,6 +279,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customClaudeModels: normalizeCustomModelSlugs(settings.customClaudeModels, "claudeAgent"),
     customGeminiModels: normalizeCustomModelSlugs(settings.customGeminiModels, "gemini"),
     customCursorModels: normalizeCustomModelSlugs(settings.customCursorModels, "cursor"),
+    customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
     customOpenCodeModels: normalizeCustomModelSlugs(settings.customOpenCodeModels, "openCode"),
   };
 }
@@ -293,6 +315,7 @@ export function getCustomModelsByProvider(
     claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
     gemini: getCustomModelsForProvider(settings, "gemini"),
     cursor: getCustomModelsForProvider(settings, "cursor"),
+    copilot: getCustomModelsForProvider(settings, "copilot"),
     openCode: getCustomModelsForProvider(settings, "openCode"),
   };
 }
@@ -389,6 +412,12 @@ export function getCustomModelOptionsByProvider(
       undefined,
       discoveredModelsByProvider?.cursor,
     ),
+    copilot: getAppModelOptions(
+      "copilot",
+      customModelsByProvider.copilot,
+      undefined,
+      discoveredModelsByProvider?.copilot,
+    ),
     openCode: getAppModelOptions(
       "openCode",
       customModelsByProvider.openCode,
@@ -406,6 +435,8 @@ export function getProviderStartOptions(
     | "codexHomePath"
     | "geminiBinaryPath"
     | "cursorBinaryPath"
+    | "copilotBinaryPath"
+    | "copilotConfigDir"
     | "openCodeBinaryPath"
   >,
 ): ProviderStartOptions | undefined {
@@ -439,6 +470,14 @@ export function getProviderStartOptions(
           },
         }
       : {}),
+    ...(settings.copilotBinaryPath || settings.copilotConfigDir
+      ? {
+          copilot: {
+            ...(settings.copilotBinaryPath ? { binaryPath: settings.copilotBinaryPath } : {}),
+            ...(settings.copilotConfigDir ? { configDir: settings.copilotConfigDir } : {}),
+          },
+        }
+      : {}),
     ...(settings.openCodeBinaryPath
       ? {
           openCode: {
@@ -459,6 +498,7 @@ export function getProviderAvailabilityByProvider(
     | "developerProviderAvailabilityClaude"
     | "developerProviderAvailabilityGemini"
     | "developerProviderAvailabilityCursor"
+    | "developerProviderAvailabilityCopilot"
     | "developerProviderAvailabilityOpenCode"
   >,
   statuses: ReadonlyArray<Pick<ServerProviderStatus, "provider" | "available">>,
