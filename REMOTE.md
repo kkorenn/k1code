@@ -14,7 +14,7 @@ The K1 Code CLI accepts the following configuration options, available either as
 | `--base-dir <path>`     | `K1CODE_HOME`         | Base directory.                                                                      |
 | `--dev-url <url>`       | `VITE_DEV_SERVER_URL` | Dev web URL redirect/proxy target.                                                   |
 | `--no-browser`          | `K1CODE_NO_BROWSER`   | Disable auto-open browser.                                                           |
-| `--auth-token <token>`  | `K1CODE_AUTH_TOKEN`   | WebSocket auth token. Use this for standard CLI and remote-server flows.            |
+| `--auth-token <token>`  | `K1CODE_AUTH_TOKEN`   | WebSocket auth token. Use this for standard CLI and remote-server flows.             |
 | `--bootstrap-fd <fd>`   | `K1CODE_BOOTSTRAP_FD` | Read a one-shot bootstrap envelope from an inherited file descriptor during startup. |
 
 > TIP: Use the `--help` flag to see all available options and their descriptions.

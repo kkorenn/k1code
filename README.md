@@ -8,9 +8,9 @@ It focuses on speed, simplicity, and a clean workflow without unnecessary clutte
 
 ## ✨ Features
 
-- 🔌 Multi-agent support  
-  - Codex (OpenAI)  
-  - Claude (Anthropic)  
+- 🔌 Multi-agent support
+  - Codex (OpenAI)
+  - Claude (Anthropic)
   - Gemini (Google)
   - Copilot (GitHub)
   - OpenCode / Cursor
@@ -37,22 +37,22 @@ You must install and authenticate them before using the app.
 ### Required CLIs / Tools
 
 - **Codex (OpenAI)**  
-  https://github.com/openai/codex  
+  https://github.com/openai/codex
 
 - **Gemini (Google)**  
-  https://github.com/google-gemini/gemini-cli  
+  https://github.com/google-gemini/gemini-cli
 
 - **Claude (Anthropic)**  
-  https://github.com/anthropics/claude-code  
+  https://github.com/anthropics/claude-code
 
 - **Copilot (GitHub)**  
-  https://github.com/features/copilot  
+  https://github.com/features/copilot
 
 - **Cursor**  
-  https://cursor.sh  
+  https://cursor.sh
 
 - **OpenCode**  
-  https://opencode.ai  
+  https://opencode.ai
 
 ---
 

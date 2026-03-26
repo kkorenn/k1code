@@ -201,6 +201,8 @@ import { useLocalStorage } from "~/hooks/useLocalStorage";
 
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
+const EMBEDDED_FILE_MAX_SIZE_BYTES = 512 * 1024;
+const EMBEDDED_FILE_MAX_CHARS = 200_000;
 const IMAGE_ONLY_BOOTSTRAP_PROMPT =
   "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]";
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
@@ -2599,13 +2601,13 @@ export default function ChatView({ threadId }: ChatViewProps) {
     toggleTerminalVisibility,
   ]);
 
-  const addComposerImages = (files: File[]) => {
+  const addComposerFiles = async (files: File[]) => {
     if (!activeThreadId || files.length === 0) return;
 
     if (pendingUserInputs.length > 0) {
       toastManager.add({
         type: "error",
-        title: "Attach images after answering plan questions.",
+        title: "Attach files after answering plan questions.",
       });
       return;
     }
@@ -2613,9 +2615,30 @@ export default function ChatView({ threadId }: ChatViewProps) {
     const nextImages: ComposerImageAttachment[] = [];
     let nextImageCount = composerImagesRef.current.length;
     let error: string | null = null;
+    const embeddedFileBlocks: string[] = [];
     for (const file of files) {
       if (!file.type.startsWith("image/")) {
-        error = `Unsupported file type for '${file.name}'. Please attach image files only.`;
+        if (file.size > EMBEDDED_FILE_MAX_SIZE_BYTES) {
+          error = `'${file.name}' exceeds the ${Math.round(
+            EMBEDDED_FILE_MAX_SIZE_BYTES / (1024 * 1024),
+          )}MB inline file limit.`;
+          continue;
+        }
+        let fileText: string;
+        try {
+          fileText = await file.text();
+        } catch {
+          error = `Couldn't read '${file.name}'.`;
+          continue;
+        }
+        if (fileText.includes("\u0000")) {
+          error = `'${file.name}' appears to be a binary file and can't be inlined.`;
+          continue;
+        }
+        if (fileText.length > EMBEDDED_FILE_MAX_CHARS) {
+          fileText = `${fileText.slice(0, EMBEDDED_FILE_MAX_CHARS)}\n\n[File truncated due to length]`;
+        }
+        embeddedFileBlocks.push([`Attached file: ${file.name}`, "```", fileText, "```"].join("\n"));
         continue;
       }
       if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
@@ -2645,6 +2668,21 @@ export default function ChatView({ threadId }: ChatViewProps) {
     } else if (nextImages.length > 1) {
       addComposerImagesToDraft(nextImages);
     }
+
+    if (embeddedFileBlocks.length > 0) {
+      const combinedFilesBlock = embeddedFileBlocks.join("\n\n");
+      const previousPrompt = promptRef.current.trimEnd();
+      const nextPrompt =
+        previousPrompt.length > 0
+          ? `${previousPrompt}\n\n${combinedFilesBlock}`
+          : combinedFilesBlock;
+      promptRef.current = nextPrompt;
+      setPrompt(nextPrompt);
+      const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
+      setComposerCursor(nextCursor);
+      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
+    }
+
     setThreadError(activeThreadId, error);
   };
 
@@ -2657,12 +2695,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     if (files.length === 0) {
       return;
     }
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-    if (imageFiles.length === 0) {
-      return;
-    }
     event.preventDefault();
-    addComposerImages(imageFiles);
+    void addComposerFiles(files);
   };
 
   const onComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
@@ -2706,7 +2740,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     dragDepthRef.current = 0;
     setIsDragOverComposer(false);
     const files = Array.from(event.dataTransfer.files);
-    addComposerImages(files);
+    void addComposerFiles(files);
     focusComposer();
   };
 
@@ -4184,7 +4218,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                               : showPlanFollowUpPrompt && activeProposedPlan
                                 ? "Add feedback to refine the plan, or leave this blank to implement it"
                                 : phase === "disconnected"
-                                  ? "Ask for follow-up changes or attach images"
+                                  ? "Ask for follow-up changes or attach files"
                                   : "Ask anything, @tag files/folders, or use / to show available commands"
                       }
                       disabled={isConnecting || isComposerApprovalState}

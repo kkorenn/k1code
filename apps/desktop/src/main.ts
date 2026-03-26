@@ -1058,7 +1058,7 @@ function startBackend(): void {
         mode: "desktop",
         noBrowser: true,
         port: backendPort,
-        t3Home: BASE_DIR,
+        k1Home: BASE_DIR,
         authToken: backendAuthToken,
       })}\n`,
     );

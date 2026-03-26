@@ -166,16 +166,16 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         const env = yield* createDevRunnerEnv({
           mode: "dev:desktop",
           baseEnv: {
-            T3CODE_PORT: "3773",
-            T3CODE_AUTH_TOKEN: "stale-token",
-            T3CODE_MODE: "web",
-            T3CODE_NO_BROWSER: "0",
-            T3CODE_HOST: "0.0.0.0",
+            K1CODE_PORT: "3773",
+            K1CODE_AUTH_TOKEN: "stale-token",
+            K1CODE_MODE: "web",
+            K1CODE_NO_BROWSER: "0",
+            K1CODE_HOST: "0.0.0.0",
             VITE_WS_URL: "ws://localhost:3773",
           },
           serverOffset: 0,
           webOffset: 0,
-          t3Home: "/tmp/my-t3",
+          k1Home: "/tmp/my-k1",
           authToken: "fresh-token",
           noBrowser: true,
           autoBootstrapProjectFromCwd: undefined,
@@ -185,15 +185,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.T3CODE_HOME, resolve("/tmp/my-t3"));
+        assert.equal(env.K1CODE_HOME, resolve("/tmp/my-k1"));
         assert.equal(env.PORT, "5733");
         assert.equal(env.ELECTRON_RENDERER_PORT, "5733");
         assert.equal(env.VITE_DEV_SERVER_URL, "http://localhost:5733");
-        assert.equal(env.T3CODE_PORT, undefined);
-        assert.equal(env.T3CODE_AUTH_TOKEN, undefined);
-        assert.equal(env.T3CODE_MODE, undefined);
-        assert.equal(env.T3CODE_NO_BROWSER, undefined);
-        assert.equal(env.T3CODE_HOST, undefined);
+        assert.equal(env.K1CODE_PORT, undefined);
+        assert.equal(env.K1CODE_AUTH_TOKEN, undefined);
+        assert.equal(env.K1CODE_MODE, undefined);
+        assert.equal(env.K1CODE_NO_BROWSER, undefined);
+        assert.equal(env.K1CODE_HOST, undefined);
         assert.equal(env.VITE_WS_URL, undefined);
       }),
     );

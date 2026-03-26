@@ -152,7 +152,6 @@ it.layer(testLayer)("server CLI command", (it) => {
     }),
   );
 
-  it.effect("prefers --mode over K1CODE_MODE", () =>
   const openBootstrapFd = Effect.fn(function* (payload: Record<string, unknown>) {
     const fs = yield* FileSystem.FileSystem;
     const filePath = yield* fs.makeTempFileScoped({ prefix: "k1-bootstrap-", suffix: ".ndjson" });
