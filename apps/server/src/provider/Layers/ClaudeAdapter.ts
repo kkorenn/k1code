@@ -24,6 +24,7 @@ import {
   type CanonicalRequestType,
   EventId,
   type ProviderApprovalDecision,
+  type ProviderInteractionMode,
   ProviderItemId,
   type ProviderRuntimeEvent,
   type ProviderRuntimeTurnStatus,
@@ -447,6 +448,21 @@ function isReadOnlyToolName(toolName: string): boolean {
     normalized.includes("glob") ||
     normalized.includes("search")
   );
+}
+
+/**
+ * Maps a tool name to the interaction mode it implies.
+ * Returns undefined when the tool has no mode semantics.
+ */
+function interactionModeForTool(toolName: string): ProviderInteractionMode | undefined {
+  switch (toolName) {
+    case "EnterPlanMode":
+      return "plan";
+    case "ExitPlanMode":
+      return "default";
+    default:
+      return undefined;
+  }
 }
 
 function classifyRequestType(toolName: string): CanonicalRequestType {
@@ -1356,6 +1372,23 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         });
       });
 
+    const emitInteractionModeChanged = (
+      context: ClaudeSessionContext,
+      mode: ProviderInteractionMode,
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const stamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "interaction.mode.changed",
+          eventId: stamp.eventId,
+          provider: PROVIDER,
+          createdAt: stamp.createdAt,
+          threadId: context.session.threadId,
+          ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+          payload: { interactionMode: mode },
+        });
+      });
+
     const completeTurn = (
       context: ClaudeSessionContext,
       status: ProviderRuntimeTurnStatus,
@@ -1677,6 +1710,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
           const toolName = block.name;
           const itemType = classifyToolItemType(toolName);
+
+          const resolvedInteractionMode = interactionModeForTool(toolName);
+          if (resolvedInteractionMode) {
+            yield* emitInteractionModeChanged(context, resolvedInteractionMode);
+          }
           const toolInput =
             typeof block.input === "object" && block.input !== null
               ? (block.input as Record<string, unknown>)
