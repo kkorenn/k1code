@@ -1175,12 +1175,14 @@ describe("PROVIDER_OPTIONS", () => {
     const claude = PROVIDER_OPTIONS.find((option) => option.value === "claudeAgent");
     const gemini = PROVIDER_OPTIONS.find((option) => option.value === "gemini");
     const cursor = PROVIDER_OPTIONS.find((option) => option.value === "cursor");
+    const copilot = PROVIDER_OPTIONS.find((option) => option.value === "copilot");
     const openCode = PROVIDER_OPTIONS.find((option) => option.value === "openCode");
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
       { value: "claudeAgent", label: "Claude", available: true },
       { value: "gemini", label: "Gemini", available: true },
       { value: "cursor", label: "Cursor", available: true },
+      { value: "copilot", label: "Copilot", available: true },
       { value: "openCode", label: "OpenCode", available: true },
     ]);
     expect(claude).toEqual({
@@ -1196,6 +1198,11 @@ describe("PROVIDER_OPTIONS", () => {
     expect(cursor).toEqual({
       value: "cursor",
       label: "Cursor",
+      available: true,
+    });
+    expect(copilot).toEqual({
+      value: "copilot",
+      label: "Copilot",
       available: true,
     });
     expect(openCode).toEqual({

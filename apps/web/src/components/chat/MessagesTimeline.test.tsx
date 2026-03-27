@@ -176,6 +176,7 @@ describe("MessagesTimeline", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
         {...baseProps}
+        expandedWorkGroups={{ "entry-1": true }}
         timelineEntries={[
           {
             id: "entry-1",

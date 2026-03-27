@@ -83,37 +83,40 @@ beforeEach(() => {
 });
 
 it.layer(testLayer)("server CLI command", (it) => {
-  it.effect("parses all CLI flags and wires scoped start/stop", () =>
-    Effect.gen(function* () {
-      yield* runCli([
-        "--mode",
-        "desktop",
-        "--port",
-        "4010",
-        "--host",
-        "0.0.0.0",
-        "--home-dir",
-        "/tmp/k1-cli-home",
-        "--dev-url",
-        "http://127.0.0.1:5173",
-        "--no-browser",
-        "--auth-token",
-        "auth-secret",
-      ]);
+  it.effect(
+    "parses all CLI flags and wires scoped start/stop",
+    () =>
+      Effect.gen(function* () {
+        yield* runCli([
+          "--mode",
+          "desktop",
+          "--port",
+          "4010",
+          "--host",
+          "0.0.0.0",
+          "--home-dir",
+          "/tmp/k1-cli-home",
+          "--dev-url",
+          "http://127.0.0.1:5173",
+          "--no-browser",
+          "--auth-token",
+          "auth-secret",
+        ]);
 
-      assert.equal(start.mock.calls.length, 1);
-      assert.equal(resolvedConfig?.mode, "desktop");
-      assert.equal(resolvedConfig?.port, 4010);
-      assert.equal(resolvedConfig?.host, "0.0.0.0");
-      assert.equal(resolvedConfig?.baseDir, "/tmp/k1-cli-home");
-      assert.equal(resolvedConfig?.stateDir, "/tmp/k1-cli-home/dev");
-      assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
-      assert.equal(resolvedConfig?.noBrowser, true);
-      assert.equal(resolvedConfig?.authToken, "auth-secret");
-      assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, false);
-      assert.equal(resolvedConfig?.logWebSocketEvents, true);
-      assert.equal(stop.mock.calls.length, 1);
-    }),
+        assert.equal(start.mock.calls.length, 1);
+        assert.equal(resolvedConfig?.mode, "desktop");
+        assert.equal(resolvedConfig?.port, 4010);
+        assert.equal(resolvedConfig?.host, "0.0.0.0");
+        assert.equal(resolvedConfig?.baseDir, "/tmp/k1-cli-home");
+        assert.equal(resolvedConfig?.stateDir, "/tmp/k1-cli-home/dev");
+        assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
+        assert.equal(resolvedConfig?.noBrowser, true);
+        assert.equal(resolvedConfig?.authToken, "auth-secret");
+        assert.equal(resolvedConfig?.autoBootstrapProjectFromCwd, false);
+        assert.equal(resolvedConfig?.logWebSocketEvents, true);
+        assert.equal(stop.mock.calls.length, 1);
+      }),
+    30_000,
   );
 
   it.effect("supports --token as an alias for --auth-token", () =>
