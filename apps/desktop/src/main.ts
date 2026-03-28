@@ -833,11 +833,22 @@ async function installDownloadedUpdate(): Promise<{ accepted: boolean; completed
   clearUpdatePollTimer();
   try {
     await stopBackendAndWaitForExit();
-    autoUpdater.quitAndInstall();
+    // Keep install-on-quit disabled for normal app exits, but enable it right
+    // before an explicit updater-triggered restart so a regular app quit can
+    // still apply the downloaded payload if quitAndInstall does not take over.
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.quitAndInstall(false, true);
+    setTimeout(() => {
+      console.warn(
+        "[desktop-updater] quitAndInstall did not terminate the app; falling back to app.quit().",
+      );
+      app.quit();
+    }, 2_000).unref();
     return { accepted: true, completed: true };
   } catch (error: unknown) {
     const message = formatErrorMessage(error);
     isQuitting = false;
+    autoUpdater.autoInstallOnAppQuit = false;
     setUpdateState(reduceDesktopUpdateStateOnInstallFailure(updateState, message));
     console.error(`[desktop-updater] Failed to install update: ${message}`);
     return { accepted: true, completed: false };

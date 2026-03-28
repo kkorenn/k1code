@@ -316,9 +316,13 @@ describe("wsNativeApi", () => {
     } as const;
     await api.orchestration.dispatchCommand(command);
 
-    expect(requestMock).toHaveBeenCalledWith(ORCHESTRATION_WS_METHODS.dispatchCommand, {
-      command,
-    });
+    expect(requestMock).toHaveBeenCalledWith(
+      ORCHESTRATION_WS_METHODS.dispatchCommand,
+      {
+        command,
+      },
+      { timeoutMs: null },
+    );
   });
 
   it("forwards workspace file writes to the websocket project method", async () => {
