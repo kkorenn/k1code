@@ -1,6 +1,7 @@
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn } from "node:child_process";
 import readline from "node:readline";
 import { readCodexAccountSnapshot, type CodexAccountSnapshot } from "./codexAccount";
+import { killChildProcessTree } from "../process/killTree";
 
 interface JsonRpcProbeResponse {
   readonly id?: unknown;
@@ -27,19 +28,6 @@ export function buildCodexInitializeParams() {
   } as const;
 }
 
-export function killCodexChildProcess(child: ChildProcessWithoutNullStreams): void {
-  if (process.platform === "win32" && child.pid !== undefined) {
-    try {
-      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-      return;
-    } catch {
-      // Fall through to direct kill when taskkill is unavailable.
-    }
-  }
-
-  child.kill();
-}
-
 export async function probeCodexAccount(input: {
   readonly binaryPath: string;
   readonly homePath?: string;
@@ -63,7 +51,7 @@ export async function probeCodexAccount(input: {
       output.close();
       child.removeAllListeners();
       if (!child.killed) {
-        killCodexChildProcess(child);
+        killChildProcessTree(child);
       }
     };
 

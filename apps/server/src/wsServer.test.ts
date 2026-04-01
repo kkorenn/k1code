@@ -58,7 +58,7 @@ import { makeSqlitePersistenceLive, SqlitePersistenceMemory } from "./persistenc
 import { SqlClient, SqlError } from "effect/unstable/sql";
 import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService";
 import { ProviderRegistry, type ProviderRegistryShape } from "./provider/Services/ProviderRegistry";
-import { Open, type OpenShape } from "./open";
+import { DesktopLauncher, type DesktopLauncherShape } from "./process/Services/DesktopLauncher";
 import { GitManager, type GitManagerShape } from "./git/Services/GitManager.ts";
 import type { GitCoreShape } from "./git/Services/GitCore.ts";
 import { GitCore } from "./git/Services/GitCore.ts";
@@ -72,8 +72,10 @@ const asProviderItemId = (value: string): ProviderItemId => ProviderItemId.makeU
 const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
 const asTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
 
-const defaultOpenService: OpenShape = {
-  openBrowser: () => Effect.void,
+const defaultDesktopLauncherService: DesktopLauncherShape = {
+  getAvailableEditors: Effect.succeed([]),
+  openExternal: () => Effect.void,
+  openBrowser: (_target) => Effect.void,
   openInEditor: () => Effect.void,
 };
 
@@ -510,7 +512,7 @@ describe("WebSocket Server", () => {
       staticDir?: string;
       providerLayer?: Layer.Layer<ProviderService, never>;
       providerRegistry?: ProviderRegistryShape;
-      open?: OpenShape;
+      desktopLauncher?: DesktopLauncherShape;
       gitManager?: GitManagerShape;
       gitCore?: Pick<GitCoreShape, "listBranches" | "initRepo" | "pullCurrentBranch">;
       terminalManager?: TerminalManagerShape;
@@ -531,7 +533,10 @@ describe("WebSocket Server", () => {
       ProviderRegistry,
       options.providerRegistry ?? defaultProviderRegistryService,
     );
-    const openLayer = Layer.succeed(Open, options.open ?? defaultOpenService);
+    const desktopLauncherLayer = Layer.succeed(
+      DesktopLauncher,
+      options.desktopLauncher ?? defaultDesktopLauncherService,
+    );
     const nodeServicesLayer = NodeServices.layer;
     const serverSettingsLayer = ServerSettingsService.layerTest(options.serverSettings);
     const serverSettingsRuntimeLayer = serverSettingsLayer.pipe(
@@ -581,12 +586,14 @@ describe("WebSocket Server", () => {
       ),
       runtimeOverrides,
     );
-    const dependenciesLayer = Layer.mergeAll(
-      runtimeLayer,
-      providerRegistryLayer,
-      openLayer,
-      serverConfigLayer,
-      nodeServicesLayer,
+    const dependenciesLayer = Layer.empty.pipe(
+      Layer.provideMerge(runtimeLayer),
+      Layer.provideMerge(providerRegistryLayer),
+      Layer.provideMerge(desktopLauncherLayer),
+      Layer.provideMerge(serverSettingsLayer),
+      Layer.provideMerge(serverConfigLayer),
+      Layer.provideMerge(analyticsLayer),
+      Layer.provideMerge(nodeServicesLayer),
     );
     const runtime = ManagedRuntime.make(dependenciesLayer);
     try {
@@ -1059,7 +1066,9 @@ describe("WebSocket Server", () => {
 
   it("routes shell.openInEditor through the injected open service", async () => {
     const openCalls: Array<{ cwd: string; editor: string }> = [];
-    const openService: OpenShape = {
+    const desktopLauncherService: DesktopLauncherShape = {
+      getAvailableEditors: Effect.succeed([]),
+      openExternal: () => Effect.void,
       openBrowser: () => Effect.void,
       openInEditor: (input) => {
         openCalls.push({ cwd: input.cwd, editor: input.editor });
@@ -1067,7 +1076,10 @@ describe("WebSocket Server", () => {
       },
     };
 
-    server = await createTestServer({ cwd: "/my/workspace", open: openService });
+    server = await createTestServer({
+      cwd: "/my/workspace",
+      desktopLauncher: desktopLauncherService,
+    });
     const addr = server.address();
     const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
@@ -1586,14 +1598,19 @@ describe("WebSocket Server", () => {
     };
     process.on("unhandledRejection", onUnhandledRejection);
 
-    const brokenOpenService: OpenShape = {
+    const brokenDesktopLauncherService: DesktopLauncherShape = {
+      getAvailableEditors: Effect.succeed([]),
+      openExternal: () => Effect.void,
       openBrowser: () => Effect.void,
       openInEditor: () =>
         Effect.sync(() => BigInt(1)).pipe(Effect.map((result) => result as unknown as void)),
     };
 
     try {
-      server = await createTestServer({ cwd: "/test", open: brokenOpenService });
+      server = await createTestServer({
+        cwd: "/test",
+        desktopLauncher: brokenDesktopLauncherService,
+      });
       const addr = server.address();
       const port = typeof addr === "object" && addr !== null ? addr.port : 0;
 
